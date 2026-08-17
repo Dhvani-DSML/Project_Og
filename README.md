@@ -145,6 +145,33 @@ external packages, builtins, and generics-heavy code the heuristic resolver
 was never meant to catch. This is a baseline for what `ingest.ts` should
 expect, not a regression to chase down.
 
+**Full-pipeline validation (not just extract.ts/graph.ts in isolation):**
+everything above was found by calling `extractFile`/`buildGraph` directly
+against locally-cloned repos, before `ingest.ts` existed. Before Phase 3
+started, `ingest.ts` itself was run end-to-end against a real GitHub repo for
+the first time — `npm run ingest -- typestack/class-validator`, the actual
+production path: GitHub tree listing, per-file fetch from
+`raw.githubusercontent.com`, parse, build graph, persist to Upstash Redis,
+chunk + embed, upsert to Upstash Vector. All 178 real source files (not a
+truncated sample this time — no test-directory exclusion either, unlike the
+earlier gap-hunting script), 297 symbols, **zero extraction errors**. Graph
+persisted to Redis at 146KB (nowhere near any payload limit). All 297
+chunks embedded and landed in Upstash Vector's own isolated namespace,
+confirmed via `/info` (`vectorCount: 297`, fully indexed).
+
+Resolution rate came back lower than the earlier 80-file sample (56% vs.
+69%) — checked *why* rather than assuming it's fine: of the 301 unresolved
+calls, **zero** trace to an actual ambiguous-name collision (the one real
+known gap in the fallback resolver); every single one targets a name that
+doesn't exist anywhere in the repo at all (external packages, builtins,
+test-framework calls like `expect`/`describe`). The lower number is fully
+explained by broader real coverage — this run, unlike the original
+gap-hunting script, didn't skip test files or truncate at 80 — not by
+anything resolving incorrectly. This is a validation finding, not a new bug:
+the full production pipeline, not just the parser, has now actually seen
+messy real-world code before Phase 3's agent gets built on top of what it
+produces.
+
 ---
 
 ## Full pipeline (target architecture)
