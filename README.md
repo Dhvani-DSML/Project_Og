@@ -530,12 +530,54 @@ graphrag/
       weak-but-real semantic queries will also trip the fallback loop as a
       false positive, an acceptable tradeoff since trying the graph path
       costs only latency, not correctness.
-- [ ] `compress.ts`: merge both result sets, dedupe, keep top-relevance chunks
-      verbatim, summarize the rest via one LLM call, and **log the before/after
-      token count** — this number is a headline feature of the demo, don't
-      lose it in implementation.
-- [ ] `answer.ts`: final grounded answer, with file/line citations and the
-      list of graph node IDs actually walked (needed for the visualization).
+- [x] `compress.ts`: merges graph + vector results (deduped by id, graph
+      results hydrated with real code text from Vector via `fetchChunks` --
+      the persisted graph itself only stores symbol metadata, not source),
+      keeps top-relevance chunks verbatim, summarizes the rest, and logs
+      real before/after token counts (`tokenStats`) — not a placeholder.
+      Tested against both `sample-repo` and the real 297-symbol
+      class-validator ingest (`npm run test:compress-answer`) before wiring
+      into `agent/graph.ts`, and both tests caught real bugs the first pass
+      had, not just confirmed it worked:
+      - **Negative compression on tiny code.** First pass showed
+        `reductionPercent: -1` on sample-repo — summarizing a 1-3 line
+        function produced a summary *longer* than the code. Added a
+        too-small-to-summarize floor; first guess (15 tokens) still went
+        negative (-5%), because a real LLM "concise one sentence" runs
+        ~40-60+ characters on its own. Raised to 40 based on that actual
+        measurement. sample-repo now correctly shows 0% (nothing there is
+        worth compressing — an honest result, not a failure to force a
+        number).
+      - **Real scaling bug, not a demo-only edge case.** `ValidateBy`'s
+        blast radius on the real repo reached 112 graph nodes. Cramming
+        every non-verbatim one into a single summarization prompt blew
+        Groq's 8000 TPM limit (11,375 tokens requested in one call).
+        Fixed with two changes: cap total candidates considered to 40
+        before splitting verbatim/summarize (a 112-node blast radius is
+        more raw material than any answer needs anyway), and batch the
+        summarization calls themselves (10 symbols/call, sequential) —
+        same batching principle already applied to embedding and
+        upserting, just not yet to this LLM call.
+      - Even after batching, `answer.ts`'s own single context call still
+        hit a 429 against the shared per-minute budget (compress.ts's
+        batches had already used most of it). Rather than shrinking
+        context further to make the problem stop showing up in testing,
+        added real retry logic to `groq.ts` (`groqChat`): reads Groq's
+        `x-ratelimit-reset-tokens` header for the exact wait time and
+        retries, up to 3 times — the correct handling for an expected,
+        recoverable free-tier constraint. Confirmed working: hit the
+        limit again on re-test, waited the reported 49.7s, retried, and
+        completed successfully with a fully-grounded answer. Final
+        measured result on the real repo: **5015 → 2423 tokens, 52%
+        reduction** — the actual headline number, not a placeholder.
+- [x] `answer.ts`: final grounded answer via `openai/gpt-oss-120b`, with
+      file/line citations. Citations are filtered to symbols the model
+      actually cited inline (`[file.ts::name]` appearing in the answer
+      text), not just everything that was available as context — a real
+      precision filter, not "return everything we had." Verified on the
+      real repo: correctly traced `IsDefined` → `ValidateBy` and explained
+      the blast radius of changing `ValidateBy` across every decorator
+      built on it, grounded in real code snippets with correct citations.
 - [ ] `agent/graph.ts`: wire these into an actual `StateGraph` with conditional
       edges — this is what makes it a LangGraph project rather than a fixed
       pipeline; don't flatten it into a plain function-call chain for

@@ -7,6 +7,7 @@
     "test:parser": "tsx src/parser/test-parse.ts",
     "test:router": "tsx src/agent/nodes/test-router.ts",
     "test:retrieval": "tsx src/agent/nodes/test-retrieval.ts",
+    "test:compress-answer": "tsx src/agent/nodes/test-compress-answer.ts",
     "ingest": "tsx src/parser/ingest.ts",
     "fetch-model": "tsx src/embeddings/fetch-model.ts"
   },
