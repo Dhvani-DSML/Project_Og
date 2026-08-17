@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test:parser": "tsx src/parser/test-parse.ts",
-    "ingest": "tsx src/parser/ingest.ts"
+    "ingest": "tsx src/parser/ingest.ts",
+    "fetch-model": "tsx src/embeddings/fetch-model.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.38.2",
