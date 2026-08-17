@@ -496,10 +496,40 @@ graphrag/
       phrases ("everything X touches", "walk me through what X uses") and
       re-run clean at 8/8. Kept as a real committed test
       (`src/agent/nodes/test-router.ts`), not thrown away after passing.
-- [ ] `graph-traversal.ts`: implement three traversal modes on the graphology
-      graph — forward N-hop, reverse N-hop ("blast radius"), and shortest
-      path between two named symbols.
-- [ ] `vector-retrieval.ts`: top-k semantic search against Upstash Vector.
+- [x] `graph-traversal.ts`: implements all three planned modes. `traverseGraph`
+      resolves `router.ts`'s target-symbol hint to actual node ids (exact ->
+      case-insensitive -> substring, same escalating-heuristic shape as
+      `graph.ts`'s import resolver) and walks **both** forward (transitively
+      calls) and reverse ("blast radius") from there — a deliberate choice,
+      not an oversight: the router doesn't extract a direction, and running
+      both is cheap versus guessing wrong on the project's own flagship
+      question. `shortestPath` between two named symbols is implemented and
+      tested, but not currently wired into `agent/graph.ts` — the router
+      extracts one target symbol per query, not two, so nothing currently
+      calls it with two names. Noted here rather than silently dropped or
+      overclaimed as wired in.
+
+      Tested against `sample-repo`'s known graph before wiring anything
+      around it (`npm run test:retrieval`) and found a real, concrete case
+      for instruction #3's conditional loop, not a theoretical one: `loadConfig`'s
+      reverse walk at the default `hopDepth=2` correctly finds `connectDB` and
+      its two callers, but misses `bootstrap` at hop 3 — the BFS frontier was
+      still non-empty when traversal stopped. This is exactly what
+      `agent/graph.ts`'s fallback loop (below) checks for and retries once.
+- [x] `vector-retrieval.ts`: top-k semantic search against Upstash Vector via
+      `embedQuery` + `queryVectors`. Also defines `isLowConfidence` for the
+      fallback loop. Threshold tuned twice, not guessed once: started at 0.45
+      from sample-repo's related-vs-unrelated numbers, but testing a
+      genuinely nonsense query ("recipe for chocolate cake") against the
+      same repo scored 0.49-0.54 — indistinguishable at that threshold from
+      real unrelated-but-in-domain pairs. MiniLM's mean-pooled embeddings
+      don't have a clean floor near zero for "totally unrelated," so no
+      threshold perfectly separates "unrelated" from "nonsense" by absolute
+      score. Raised to 0.55, which does cleanly separate real related
+      queries (0.66-0.76 measured) from both — accepting that some
+      weak-but-real semantic queries will also trip the fallback loop as a
+      false positive, an acceptable tradeoff since trying the graph path
+      costs only latency, not correctness.
 - [ ] `compress.ts`: merge both result sets, dedupe, keep top-relevance chunks
       verbatim, summarize the rest via one LLM call, and **log the before/after
       token count** — this number is a headline feature of the demo, don't
