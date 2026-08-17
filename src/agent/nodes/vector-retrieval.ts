@@ -1,6 +1,6 @@
-import { embedQuery } from "../../embeddings/embed.js";
-import { queryVectors } from "../../embeddings/vector-store.js";
-import type { VectorMatch } from "../../embeddings/vector-store.js";
+import { embedQuery } from "../../embeddings/embed";
+import { queryVectors } from "../../embeddings/vector-store";
+import type { VectorMatch } from "../../embeddings/vector-store";
 
 const DEFAULT_TOP_K = 8;
 

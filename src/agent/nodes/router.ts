@@ -1,5 +1,5 @@
-import { groqChat, MODEL_SMALL } from "../groq.js";
-import type { TaskType } from "../state.js";
+import { groqChat, MODEL_SMALL } from "../groq";
+import type { TaskType } from "../state";
 
 const SYSTEM_PROMPT = `You are the router for a code-intelligence agent that answers questions about a codebase using two complementary tools:
 

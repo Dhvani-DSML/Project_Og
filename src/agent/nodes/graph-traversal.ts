@@ -1,7 +1,7 @@
 import Graph from "graphology";
-import { loadGraph } from "../../parser/graph-store.js";
-import type { GraphWalkResult } from "../state.js";
-import type { SymbolNode } from "../../parser/extract.js";
+import { loadGraph } from "../../parser/graph-store";
+import type { GraphWalkResult } from "../state";
+import type { SymbolNode } from "../../parser/extract";
 
 const DEFAULT_HOP_DEPTH = 2;
 

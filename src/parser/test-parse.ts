@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { initParsers, extractFile } from "./extract.js";
-import { buildGraph } from "./graph.js";
+import { initParsers, extractFile } from "./extract";
+import { buildGraph } from "./graph";
 
 const REPO_DIR = path.join(process.cwd(), "sample-repo");
 

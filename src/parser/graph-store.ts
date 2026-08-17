@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { Redis } from "@upstash/redis";
 import Graph from "graphology";
-import type { BuildResult } from "./graph.js";
+import type { BuildResult } from "./graph";
 
 try {
   // Local dev convenience -- on Vercel these are injected directly into

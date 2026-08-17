@@ -1,4 +1,4 @@
-import { classifyQuery } from "./router.js";
+import { classifyQuery } from "./router";
 
 const cases: { q: string; expectTaskType: string; expectHint: string | null | "any" }[] = [
   // Structural: relationship/impact questions

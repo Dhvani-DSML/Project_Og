@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { initParsers, extractFile } from "./extract.js";
-import { buildGraph } from "./graph.js";
-import { persistGraph } from "./graph-store.js";
-import { chunkSymbols, embedChunks } from "../embeddings/embed.js";
-import { upsertChunks } from "../embeddings/vector-store.js";
-import type { FileGraph } from "./extract.js";
-import type { BuildResult } from "./graph.js";
+import { initParsers, extractFile } from "./extract";
+import { buildGraph } from "./graph";
+import { persistGraph } from "./graph-store";
+import { chunkSymbols, embedChunks } from "../embeddings/embed";
+import { upsertChunks } from "../embeddings/vector-store";
+import type { FileGraph } from "./extract";
+import type { BuildResult } from "./graph";
 
 const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);

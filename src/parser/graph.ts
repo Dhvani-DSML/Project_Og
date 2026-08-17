@@ -1,5 +1,5 @@
 import Graph from "graphology";
-import type { FileGraph, SymbolNode, Edge } from "./extract.js";
+import type { FileGraph, SymbolNode, Edge } from "./extract";
 
 export type BuildResult = {
   graph: Graph;

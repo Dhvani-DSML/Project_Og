@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { FeatureExtractionPipeline } from "@xenova/transformers";
-import type { FileGraph, SymbolNode } from "../parser/extract.js";
+import type { FileGraph, SymbolNode } from "../parser/extract";
 
 const MODELS_DIR = path.join(process.cwd(), "src/embeddings/models");
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";

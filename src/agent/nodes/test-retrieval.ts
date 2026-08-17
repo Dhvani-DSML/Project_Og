@@ -1,6 +1,6 @@
-import { ingest } from "../../parser/ingest.js";
-import { traverseGraph, shortestPath } from "./graph-traversal.js";
-import { retrieveByVector, isLowConfidence } from "./vector-retrieval.js";
+import { ingest } from "../../parser/ingest";
+import { traverseGraph, shortestPath } from "./graph-traversal";
+import { retrieveByVector, isLowConfidence } from "./vector-retrieval";
 
 async function main() {
   const result = await ingest("sample-repo");

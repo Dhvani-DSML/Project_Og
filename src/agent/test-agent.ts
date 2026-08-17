@@ -1,4 +1,4 @@
-import { agentGraph } from "./graph.js";
+import { agentGraph } from "./graph";
 
 async function run(repoKey: string, query: string) {
   console.log(`\n${"=".repeat(70)}\nrepoKey=${repoKey}\nquery="${query}"\n${"=".repeat(70)}`);

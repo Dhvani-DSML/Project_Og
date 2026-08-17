@@ -1,11 +1,11 @@
 import { StateGraph, START, END, Command } from "@langchain/langgraph";
-import { AgentStateAnnotation } from "./state.js";
-import { classifyQuery } from "./nodes/router.js";
-import { traverseGraph } from "./nodes/graph-traversal.js";
-import { retrieveByVector, isLowConfidence } from "./nodes/vector-retrieval.js";
-import { compressContext } from "./nodes/compress.js";
-import { generateAnswer } from "./nodes/answer.js";
-import type { AgentState } from "./state.js";
+import { AgentStateAnnotation } from "./state";
+import { classifyQuery } from "./nodes/router";
+import { traverseGraph } from "./nodes/graph-traversal";
+import { retrieveByVector, isLowConfidence } from "./nodes/vector-retrieval";
+import { compressContext } from "./nodes/compress";
+import { generateAnswer } from "./nodes/answer";
+import type { AgentState } from "./state";
 
 const builder = new StateGraph(AgentStateAnnotation)
   .addNode("router", async (state: AgentState) => {

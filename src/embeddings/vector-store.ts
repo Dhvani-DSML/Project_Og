@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { Index } from "@upstash/vector";
-import type { EmbeddedChunk } from "./embed.js";
+import type { EmbeddedChunk } from "./embed";
 
 try {
   // Local dev convenience, same pattern as graph-store.ts -- on Vercel these

@@ -1,5 +1,5 @@
-import { groqChat, MODEL_LARGE } from "../groq.js";
-import type { CompressedChunk, Citation } from "../state.js";
+import { groqChat, MODEL_LARGE } from "../groq";
+import type { CompressedChunk, Citation } from "../state";
 
 // Structured output, not text pattern-matching. The first version asked the
 // model to cite inline as "[exact-id]" and then grepped the free-text answer

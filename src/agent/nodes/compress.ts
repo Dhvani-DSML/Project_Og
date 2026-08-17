@@ -1,7 +1,7 @@
-import { fetchChunks } from "../../embeddings/vector-store.js";
-import { groqChat, MODEL_LARGE } from "../groq.js";
-import type { GraphWalkResult, CompressedChunk, TokenStats } from "../state.js";
-import type { VectorMatch } from "../../embeddings/vector-store.js";
+import { fetchChunks } from "../../embeddings/vector-store";
+import { groqChat, MODEL_LARGE } from "../groq";
+import type { GraphWalkResult, CompressedChunk, TokenStats } from "../state";
+import type { VectorMatch } from "../../embeddings/vector-store";
 
 const VERBATIM_HOP_THRESHOLD = 1; // graph hits within this many hops are kept verbatim
 const VERBATIM_SCORE_THRESHOLD = 0.6; // vector hits above this score are kept verbatim

@@ -1,6 +1,6 @@
 import { Annotation } from "@langchain/langgraph";
-import type { SymbolNode } from "../parser/extract.js";
-import type { VectorMatch } from "../embeddings/vector-store.js";
+import type { SymbolNode } from "../parser/extract";
+import type { VectorMatch } from "../embeddings/vector-store";
 
 export type TaskType = "structural" | "semantic" | "both";
 

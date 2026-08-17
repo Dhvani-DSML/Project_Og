@@ -1,7 +1,7 @@
-import { traverseGraph } from "./graph-traversal.js";
-import { retrieveByVector } from "./vector-retrieval.js";
-import { compressContext } from "./compress.js";
-import { generateAnswer } from "./answer.js";
+import { traverseGraph } from "./graph-traversal";
+import { retrieveByVector } from "./vector-retrieval";
+import { compressContext } from "./compress";
+import { generateAnswer } from "./answer";
 
 async function run(repoKey: string, query: string, hint: string | null) {
   console.log(`\n=== repoKey=${repoKey}  query="${query}" ===`);
