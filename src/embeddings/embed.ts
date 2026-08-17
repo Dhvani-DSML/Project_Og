@@ -9,12 +9,28 @@ const BATCH_SIZE = 32;
 export type SymbolChunk = {
   id: string; // same id as SymbolNode.id, e.g. "server.ts::startServer"
   symbol: SymbolNode;
-  text: string; // exact source slice for symbol.startLine..symbol.endLine
+  text: string; // exact source slice for symbol.startLine..symbol.endLine, for display/citations
+  embeddingText: string; // text with a context header prepended -- what actually gets embedded
 };
 
 export type EmbeddedChunk = SymbolChunk & {
   embedding: number[];
 };
+
+/**
+ * A short natural-language-ish line identifying the symbol, prepended to its
+ * code before embedding (not before display -- see chunkSymbols). Short
+ * functions carry almost no distinguishing signal on their own (confirmed:
+ * a sanity check on sample-repo's 1-3 line functions came back inconclusive,
+ * see README "Embedding model cold-start" follow-up), so the name, its
+ * enclosing class (folded into symbol.name for methods, e.g.
+ * "ConnectionPool.open"), and file path go in ahead of the body to give the
+ * model something to actually differentiate on.
+ */
+function contextHeader(symbol: SymbolNode): string {
+  const kindLabel = symbol.kind === "const_fn" ? "function" : symbol.kind;
+  return `${kindLabel} ${symbol.name} in ${symbol.file}`;
+}
 
 /**
  * Slices each symbol's exact source range (already computed by the
@@ -31,7 +47,9 @@ export function chunkSymbols(fileGraphs: FileGraph[], sources: Map<string, strin
     for (const symbol of fg.symbols) {
       // startLine/endLine are 1-indexed and inclusive.
       const text = lines.slice(symbol.startLine - 1, symbol.endLine).join("\n").trim();
-      if (text) chunks.push({ id: symbol.id, symbol, text });
+      if (text) {
+        chunks.push({ id: symbol.id, symbol, text, embeddingText: `${contextHeader(symbol)}\n${text}` });
+      }
     }
   }
   return chunks;
@@ -65,7 +83,7 @@ export async function embedChunks(chunks: SymbolChunk[]): Promise<EmbeddedChunk[
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
     const output = await extractor(
-      batch.map((c) => c.text),
+      batch.map((c) => c.embeddingText),
       { pooling: "mean", normalize: true }
     );
     // output.dims = [batch.length, 384]; .tolist() gives one array per input.

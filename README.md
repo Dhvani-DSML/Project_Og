@@ -357,12 +357,32 @@ graphrag/
       content. Verified against `sample-repo`: all 7 chunks' sliced text
       matches the symbol boundaries exactly (including a class body vs. its
       one method sliced separately), 384-dim embeddings, ~500ms for the
-      whole batch including model init. One honest caveat: a cosine-similarity
-      sanity check (`loadConfig` vs. `validateConfig` vs. `startServer`) came
-      back inconclusive (0.508 vs. 0.505) — likely just sample-repo's 1-3 line
-      functions giving the model too little signal to differentiate, not a
-      chunking bug, but worth re-checking once real-repo functions are in the
-      mix during Phase 3 retrieval-quality tuning.
+      whole batch including model init.
+
+      **Follow-up on the cosine-similarity caveat above, fixed before any
+      writes to Upstash Vector** (changing this after would have meant
+      re-embedding everything already stored): each chunk now gets a short
+      context header — symbol kind, name (which already folds in the
+      enclosing class for methods, e.g. `ConnectionPool.open`), and file path
+      — prepended to its code before embedding (`SymbolChunk.embeddingText`,
+      kept separate from `.text` so citations/display still show the raw
+      code, not the synthetic header). Re-measured on the same three
+      symbols: `cos(loadConfig, validateConfig)` went from 0.508 to **0.622**,
+      while the unrelated pairs dropped to **0.584** (`startServer`) and
+      **0.484** (`ConnectionPool.open`) — a real, measurable improvement in
+      separation, not just noise.
+
+      Worth being honest about what this is and isn't: the gap is still
+      modest (0.622 vs. 0.584), not dramatic. That's not a bug to keep
+      chasing — it's a found example of exactly the limitation this whole
+      project is built around. Semantic embeddings on short, boilerplate-y
+      code genuinely struggle to differentiate meaning from a handful of
+      lines of near-identical shape, no matter how the text is framed. That
+      is precisely *why* the graph traversal path exists as a complementary
+      signal alongside vector search, not a redundant one — the project's
+      pitch (see "What this actually is") is that relationship-walking
+      catches what text similarity misses, and this is a concrete,
+      measured instance of that, not a hypothetical one anymore.
 - [ ] `vector-store.ts`: write embeddings to Upstash Vector with metadata
       (symbol id, file, line range). Implement top-k semantic search.
 
