@@ -161,8 +161,8 @@ export function extractFile(filePath: string, source: string): FileGraph {
       }
     }
 
-    // class Foo { method() {} }
-    if (node.type === "class_declaration") {
+    // class Foo { method() {} }  /  abstract class Foo { method() {} }
+    if (node.type === "class_declaration" || node.type === "abstract_class_declaration") {
       const nameNode = node.childForFieldName("name");
       if (nameNode) {
         const classId = symId(nameNode.text);

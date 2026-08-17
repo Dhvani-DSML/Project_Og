@@ -81,6 +81,72 @@ of this document.
 
 ---
 
+## Real-repo parsing gaps
+
+Before building `ingest.ts`, `extract.ts` + `graph.ts` were run against three
+real open-source TS repos (not just the 3-file `sample-repo`), each picked to
+stress a different pattern: [zod](https://github.com/colinhacks/zod) (heavy
+`interface`/`type`/generics, abstract base classes), [class-validator]
+(https://github.com/typestack/class-validator) (decorator-based API, built
+almost entirely out of barrel re-exports), and
+[date-fns](https://github.com/date-fns/date-fns) (modern ESM-style imports
+with explicit `.ts` extensions, one-function-per-folder + fan-out barrel
+index). Each finding below was triaged individually: fixed, or documented as
+a deliberate scope limitation the same way the instance-method-call gap
+already was.
+
+**Fixed:**
+1. Relative imports written with an explicit extension (`from "./foo.ts"`,
+   required under NodeNext/ESM resolution — date-fns's entire source is
+   written this way) silently broke exact-path call resolution, because
+   `resolveImportPath` never stripped the extension before comparing against
+   an extension-stripped candidate file path. Masked in casual testing by the
+   "unique exported symbol" fallback; isolated with a same-named-symbol-in-
+   two-files repro, which went from 0% to 100% resolved once fixed. Fixed in
+   `resolveImportPath` (`graph.ts`).
+2. `abstract class` declarations parse as a distinct `abstract_class_declaration`
+   node in the tree-sitter grammar, not `class_declaration` — the extractor's
+   class-handling branch didn't match it, so an abstract class and everything
+   in it (methods, calls) was silently dropped. Real impact: zod's `ZodType`,
+   the abstract base class nearly everything else in the library extends, was
+   invisible. Fixed in `extractFile` (`extract.ts`).
+
+**Documented as known limitations (deliberate scope calls, not fixed):**
+3. `interface`/`type` declarations are never extracted as symbols. This
+   project's graph is a *call* graph, not a type graph, and "what breaks if I
+   change this function" doesn't need interface nodes — but it's worth being
+   explicit that this is a scope cut, not an oversight, given how common they
+   are in real TS (500+ occurrences in zod's own source alone).
+4. `namespace Foo { ... }` blocks (`internal_module` in the grammar) aren't
+   traversed into, so anything declared inside one — including real functions
+   with real calls — is invisible. Confirmed concretely, not just
+   theoretically: zod's `errorUtil.ts` defines two functions entirely inside
+   `export namespace errorUtil { ... }`, both silently dropped. Uncommon (4/1/0
+   occurrences across the three repos tested), so left undone rather than
+   generalizing symbol extraction to be recursive under deadline pressure.
+
+**Confirmed already working, no change needed:**
+5. Barrel/re-export files (`export * from "./x"`, `export { x as default }`)
+   correctly produce zero symbols of their own and don't crash the parser.
+   Calls made through a barrel import already resolve via the existing
+   "unique exported symbol by name" fallback in `graph.ts` — confirmed
+   against class-validator, which routes essentially every export through
+   exactly this pattern.
+6. Decorators (`@Injectable()`, `@Column()`, etc.) don't break
+   `class_declaration` parsing. Neither class-validator nor class-transformer
+   actually uses decorators in its *own* source (they're decorator-providing
+   libraries, not consumers of them), so this was confirmed with a small
+   synthetic decorated-class snippet instead of real-repo evidence.
+
+**Context — real-world resolution rates:** `sample-repo` resolves 83% of
+calls. Real repos are lower: zod ~43%, class-validator ~69% (both over their
+first 80 non-test source files) — expected, since real code calls into
+external packages, builtins, and generics-heavy code the heuristic resolver
+was never meant to catch. This is a baseline for what `ingest.ts` should
+expect, not a regression to chase down.
+
+---
+
 ## Full pipeline (target architecture)
 
 ```

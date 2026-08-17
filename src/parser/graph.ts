@@ -18,8 +18,12 @@ export type BuildResult = {
  */
 function resolveImportPath(fromFile: string, rawPath: string): string {
   if (!rawPath.startsWith(".")) return rawPath; // external package, leave as-is
+  // Modern ESM-style TS (NodeNext resolution, Deno, Bun) writes relative
+  // imports with an explicit extension, e.g. `from "./foo.ts"`. Strip it so
+  // this compares equal to a candidate file's extension-stripped path below.
+  const stripped = rawPath.replace(/\.(ts|tsx|js|jsx|mjs|cjs)$/, "");
   const fromDir = fromFile.split("/").slice(0, -1).join("/");
-  const parts = (fromDir ? fromDir + "/" + rawPath : rawPath).split("/");
+  const parts = (fromDir ? fromDir + "/" + stripped : stripped).split("/");
   const resolved: string[] = [];
   for (const part of parts) {
     if (part === "." || part === "") continue;
