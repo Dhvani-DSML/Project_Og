@@ -203,13 +203,43 @@ project**, avoiding a separate hosted backend.
 | Graph storage | `graphology`, serialized to **Upstash Redis** (free tier, REST-based) | Rebuild in-memory per invocation; no infra to manage |
 | Embeddings | `@xenova/transformers` (`all-MiniLM-L6-v2`), running in-process, **model weights bundled with the deployment** (not downloaded at runtime) | Zero API cost, genuinely open source, verified fast enough once bundled — see "Embedding model cold-start" below |
 | Vector store | **Upstash Vector** (free tier, REST API) | Built for exactly this serverless pattern |
-| LLM | Groq free tier, Llama 3.3 70B or similar | Open-weight model, free access, fast enough for a live demo |
+| LLM | Groq free tier — **`openai/gpt-oss-120b`** (compress/answer) + **`openai/gpt-oss-20b`** (router) | Open-weight, free access, fast enough for a live demo — see "LLM model choice" below for why this changed from the original Llama 3.3 70B pick and why it's split into two models |
 | Graph visualization | `react-flow` or `vis-network` | Render the walked subgraph next to the answer |
 | Deployment | Vercel | Required by the assignment |
 
 Repo scope: **TypeScript/JavaScript only.** This is a deliberate scope cut to
 keep tree-sitter grammar handling simple within the deadline — say so plainly
 in the write-up, don't pretend it's multi-language.
+
+---
+
+## LLM model choice (Llama 3.3 70B is gone from Groq)
+
+Before writing any Phase 3 code against it, the Groq API key was verified
+with a real request (`GET /models`) rather than assumed to work — same
+practice as the Upstash credentials in Phase 1/2. The key is valid, but
+**Llama 3.3 70B, the model this README originally named, is no longer in
+Groq's lineup at all.** Full current text-generation model list: `openai/
+gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `groq/compound` /
+`compound-mini` (Groq's own agentic wrapper, not a plain chat model), and
+`allam-2-7b` (Arabic-focused, 4k context). Groq's lineup changed at least
+once already during this build's window — no reason to assume it won't
+again before submission.
+
+**Decision:** two models, not a like-for-like swap for one:
+- **`openai/gpt-oss-120b`** for `compress.ts` and `answer.ts` — the
+  "large capable model" role Llama 3.3 70B was filling, chosen for quality:
+  these nodes run once per query and their output is the actual grounded
+  answer, so it's worth the extra weight.
+- **`openai/gpt-oss-20b`** for `router.ts` — the classification call runs on
+  *every* query before anything else happens, so latency matters more than
+  raw capability there; a 20b model is plenty for a 3-way structural/
+  semantic/both classification.
+
+Both are read from environment variables with these two model IDs as
+defaults (`GROQ_MODEL_LARGE`, `GROQ_MODEL_SMALL` — see "Environment
+variables needed"), not hardcoded in the node files, precisely because the
+lineup has already moved once.
 
 ---
 
@@ -251,7 +281,9 @@ better than a hosted API's cold start would be anyway.
 ## Environment variables needed
 
 ```
-GROQ_API_KEY=
+GROQ_API_KEY=                 # configured, see .env.local (gitignored)
+GROQ_MODEL_LARGE=openai/gpt-oss-120b   # default if unset -- see "LLM model choice"
+GROQ_MODEL_SMALL=openai/gpt-oss-20b    # default if unset -- see "LLM model choice"
 UPSTASH_VECTOR_REST_URL=      # configured, see .env.local (gitignored)
 UPSTASH_VECTOR_REST_TOKEN=    # configured, see .env.local (gitignored)
 UPSTASH_REDIS_REST_URL=       # configured, see .env (gitignored)
@@ -259,11 +291,12 @@ UPSTASH_REDIS_REST_TOKEN=     # configured, see .env (gitignored)
 GITHUB_TOKEN=       # optional, raises the unauthenticated rate limit for public repo ingestion
 ```
 
-Upstash Redis and Upstash Vector are both configured and verified working
-(real round-trip write/read for each, see Phase 1 and Phase 2 checklists).
-Groq and `GITHUB_TOKEN` are still unset — sign-up is required before those
-can be filled in; flag this to the user
-rather than inventing placeholder values that silently fail.
+Upstash Redis, Upstash Vector, and Groq are all configured and verified
+working (real round-trip write/read for each Upstash service; Groq checked
+with a real `/models` request — see Phase 1/2 checklists and "LLM model
+choice"). Only `GITHUB_TOKEN` remains unset — optional, not required to
+proceed. `GROQ_MODEL_LARGE`/`GROQ_MODEL_SMALL` are read with the listed
+defaults if unset, not required to be set explicitly.
 
 ---
 
