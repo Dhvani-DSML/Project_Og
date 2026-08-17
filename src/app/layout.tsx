@@ -1,3 +1,5 @@
+import "./globals.css";
+
 export const metadata = {
   title: "GraphRAG",
   description: "Multi-hop code intelligence agent",

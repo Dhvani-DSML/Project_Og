@@ -1,0 +1,200 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  background: #0f1115;
+  color: #e6e8eb;
+}
+
+.app {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  color: #9098a4;
+  font-size: 14px;
+}
+
+.ingest-form,
+.ask-form {
+  display: flex;
+  gap: 8px;
+}
+
+input[type="text"] {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #2a2d35;
+  background: #171a20;
+  color: #e6e8eb;
+  font-size: 14px;
+}
+
+input[type="text"]:focus {
+  outline: 2px solid #4f7cff;
+  outline-offset: -1px;
+}
+
+input[type="text"]:disabled {
+  opacity: 0.5;
+}
+
+button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  background: #4f7cff;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button:disabled {
+  background: #2a2d35;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover {
+  background: #3d68e8;
+}
+
+.status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.status-loading {
+  background: #1c2333;
+  color: #8ab4ff;
+}
+
+.status-success {
+  background: #16261c;
+  color: #6fd995;
+}
+
+.status-error {
+  background: #2b1818;
+  color: #ff8383;
+}
+
+/* The token-savings panel is the project's headline demo number --
+   deliberately the most visually weighted element on the page. */
+.token-panel {
+  background: linear-gradient(135deg, #1a2a4a, #0f1115);
+  border: 1px solid #2f4a8a;
+  border-radius: 14px;
+  padding: 20px 24px;
+  text-align: center;
+}
+
+.token-panel-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8ab4ff;
+  margin-bottom: 6px;
+}
+
+.token-panel-number {
+  font-size: 36px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.token-panel-unit {
+  font-size: 18px;
+  font-weight: 500;
+  color: #9098a4;
+}
+
+.token-panel-reduction {
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #6fd995;
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 60px;
+}
+
+.message {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.message-user {
+  background: #1c2333;
+  align-self: flex-end;
+  max-width: 85%;
+  margin-left: auto;
+}
+
+.message-assistant {
+  background: #171a20;
+  border: 1px solid #22262e;
+}
+
+.message-pending {
+  color: #9098a4;
+  font-style: italic;
+}
+
+.message-role {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.message-content {
+  white-space: pre-wrap;
+}
+
+.citations {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.citation-pill {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #1c2333;
+  color: #8ab4ff;
+  border: 1px solid #2f4a8a;
+}

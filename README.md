@@ -353,13 +353,14 @@ graphrag/
         answer.ts                   # NEW
       graph.ts                      # NEW: wires nodes into the LangGraph StateGraph
     app/                             # Next.js App Router
-      page.tsx                       # chat UI
+      page.tsx                       # done: renders ChatPanel
+      globals.css                     # done
       api/
-        ingest/route.ts               # POST: repo URL -> parse + embed + store
-        query/route.ts                 # POST: question -> run agent -> answer
+        ingest/route.ts               # done: POST { source } -> parse + embed + store
+        query/route.ts                 # done: POST { repoKey, question } -> run agent -> answer
     components/
-      ChatPanel.tsx
-      GraphVisualization.tsx
+      ChatPanel.tsx                    # done: ingest form, chat, token-savings panel
+      GraphVisualization.tsx            # NEW -- Phase 5
   sample-repo/                          # done, keep for regression testing
   README.md                              # this file
 ```
@@ -648,13 +649,51 @@ graphrag/
       test, same as the per-node tests, not thrown away once green.
 
 ### Phase 4 — API + UI
-- [ ] `/api/ingest`: accepts a repo URL, runs Phase 1 + 2, returns a status.
-- [ ] `/api/query`: accepts `{ repoId, question }`, runs the agent, returns
-      `{ answer, citations, walkedNodes, tokenStats }`.
-- [ ] Chat UI: input for repo URL, ingestion status, chat interface, and a
-      persistent panel showing the last query's token-savings stat
-      ("48,203 → 8,912 tokens, 81% reduction") — this is the single most
-      demo-friendly number in the whole project, give it real visual weight.
+- [x] `/api/ingest`: `POST { source }` (local dir, GitHub URL, or owner/repo
+      shorthand — same input `ingest()` already accepts) → runs the full
+      Phase 1+2 pipeline, returns `{ repoKey, source, stats, persisted,
+      embeddedCount, vectorsWritten, skippedCount }`.
+- [x] `/api/query`: `POST { repoKey, question }` → runs `agentGraph`, returns
+      `{ answer, citations, walkedNodes, tokenStats, taskType }` — matches
+      the originally-planned shape (`repoId` renamed `repoKey` to match
+      every other part of the system, which already settled on that name
+      back in Phase 1).
+      Both routes tested directly against the real dev server (curl, then a
+      small Node script once shell quoting made curl unreliable for a
+      repoKey containing Windows backslashes) before any UI was built on
+      top of them.
+
+      Real, codebase-wide bug found in the process: Turbopack (Next.js 16's
+      default bundler) couldn't resolve the `.js`-suffixed relative imports
+      the rest of the codebase uses (required for `tsx`/native Node ESM) to
+      their actual `.ts` source files — identical failure whether
+      path-aliased via `@/` or plain relative. Since `src/parser`,
+      `src/embeddings`, and `src/agent` are each consumed *both* directly
+      via `tsx` (CLI, test scripts) *and* bundled via Turbopack (these API
+      routes), the same import statement has to satisfy both toolchains at
+      once. Confirmed `tsx` tolerates extensionless imports just as well as
+      `.js`-suffixed ones, so standardized on extensionless relative imports
+      across every file in those three directories — one style that works
+      for both, instead of two conventions for the same shared files.
+      Re-ran the full existing test suite after the rewrite to confirm
+      nothing broke.
+- [x] Chat UI (`src/components/ChatPanel.tsx`): repo input + ingestion
+      status, chat interface, and a token-savings panel with deliberately
+      outsized visual weight (large gradient card, 36px tabular-nums
+      number) — the single most demo-friendly number in the project, per
+      the original instruction. **Actually tested in a browser** (Chrome,
+      via `claude-in-chrome`), not just trusted to compile: ingested
+      `sample-repo` through the real UI (correct stats rendered: "3 files,
+      7 symbols, 5/6 calls resolved"), asked two real questions
+      back-to-back, and confirmed both grounded answers rendered with
+      correct citation pills, the token panel updated per-query (106→106,
+      then 155→155, both honestly 0% since sample-repo has nothing worth
+      compressing), and the chat correctly stacked both turns rather than
+      replacing the first. One dev-overlay "1 Issue" hydration warning
+      appeared and was checked, not ignored — traced to a browser
+      extension (`bbai-tooltip-injected`) mutating the DOM before React
+      hydrated, exactly the extension-interference case Next.js's own
+      error message calls out, not a bug in this code.
 
 ### Phase 5 — graph visualization
 - [ ] Render `walkedNodes` + their edges as a small subgraph (react-flow),
