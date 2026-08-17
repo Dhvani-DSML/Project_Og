@@ -245,6 +245,19 @@ export async function ingest(input: string): Promise<IngestResult> {
     resolvedSource = { ...source, ref: result.ref };
   }
 
+  // Every file we attempted failed (confirmed real: raw.githubusercontent.com's
+  // unauthenticated CDN rate limit, separate from the token-authenticated
+  // core API limit, returned 429 for all 53 of a real repo's files during
+  // testing) -- proceeding would persist an empty graph and silently
+  // overwrite any previously-good ingest for this repo with nothing.
+  // Refuse instead of corrupting existing data on a transient failure.
+  if (fileGraphs.length === 0 && skipped.length > 0) {
+    throw new Error(
+      `All ${skipped.length} files failed to fetch/parse -- refusing to persist an empty graph over any ` +
+        `existing ingest for this repo. First failure: ${skipped[0].file}: ${skipped[0].reason}`
+    );
+  }
+
   const build = buildGraph(fileGraphs);
   const repoKey = repoKeyFor(resolvedSource);
   const persisted = await persistGraph(repoKey, build);

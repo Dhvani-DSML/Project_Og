@@ -172,6 +172,82 @@ the full production pipeline, not just the parser, has now actually seen
 messy real-world code before Phase 3's agent gets built on top of what it
 produces.
 
+**Through the actual running app, not the CLI (closes the last open Phase 1
+item):** every prior real-repo test called `ingest()`/`agentGraph` directly
+via `tsx`. Before touching Phase 5, ingested a fresh repo —
+[sindresorhus/ky](https://github.com/sindresorhus/ky), not previously
+touched by any prior test — through the real browser UI end to end.
+`GITHUB_TOKEN` was verified against `/rate_limit` (5000/hour, confirmed
+authenticated) before starting, since ky's file list is large enough to
+have been a real risk unauthenticated.
+
+- **Real numbers, reported as found:** 53 files, 121 symbols, 119/571 calls
+  resolved — **21%**, the lowest resolution rate seen on any repo so far
+  (sample-repo 83%, zod ~43%, class-validator 56-69%). Consistent with
+  ky's style, not a bug: heavy generics, type-only imports, and constant
+  calls into DOM/fetch APIs (`Headers`, `AbortController`, `Response`
+  methods) that are external by construction and were never going to
+  resolve.
+- **Multi-hop blast radius, checked, not assumed:** asked "What breaks if I
+  change mergeHeaders?" and inspected the raw API response, not just the
+  rendered citations (which are a filtered subset). `walkedNodes` came back
+  with 5 nodes spanning **both directions and 2 hops** — `mergeHeaders` →
+  `Ky.constructor` (reverse, its real caller) and `mergeHeaders` →
+  `mergeHeaderContainers` → `deepMergeInternal`/`deepMerge` (forward, 2 hops
+  into what it calls). Not just the immediate caller — this is the feature
+  the whole project is built around, and it holds up on real code.
+- **Semantic path, exercised separately:** "Explain how the retry logic
+  works" (no named symbol, forcing the vector path) returned 8 `walkedNodes`
+  and a fully-grounded, accurate multi-paragraph explanation of `Ky`'s
+  private `#retry`/`#retryFromError`/`#calculateRetryDelay` methods and how
+  they interact — correctly describing hook behavior, jitter, backoff
+  limits, and the `ForceRetryError`/timing-header special cases, all cited
+  to real file:line ranges.
+- **Token compression, actual percentage, not rounded up:** the first three
+  queries tried (including the two above) all came back at a genuine,
+  honestly-reported **0%** — their result sets (5, 8, and 9 nodes) fit
+  entirely within the verbatim caps (12 chunks / hop≤1 / score≥0.6), so
+  there was nothing to summarize away, the same legitimate reason
+  sample-repo showed 0%. Rather than stop there, tried a more central
+  symbol (`validateAndMerge`, called from all four of `createInstance`'s
+  request-building paths in `index.ts`) — its 10-node blast radius produced
+  a real **32% reduction (2156 → 1476 tokens)**, confirming the compression
+  mechanism scales on this repo too; it's query-dependent, not repo-broken.
+- **New parsing edge case, confirmed working:** ky's `Ky` class uses ES2022
+  private fields and methods (`#retryCount`, `#calculateDelay()`, etc.), not
+  seen in zod/class-validator/date-fns. Private *methods* extract and
+  resolve correctly — confirmed directly, `Ky.#retry` and `Ky.#calculateDelay`
+  both appeared correctly in the blast-radius walk above. Private *fields*
+  correctly produce no symbol (consistent with the existing function/class/
+  const-arrow-fn-only scope — fields aren't callable, so this is expected,
+  not a gap). Also checked for decorators, enums, and namespaces: none
+  present (a `@example`/`@param` grep match turned out to be JSDoc comments,
+  not decorator syntax — false alarm, corrected before reporting it as a
+  finding). `interface` declarations are present (`Options`,
+  `NormalizedOptions`) but are the already-documented type-graph scope
+  decision, not new.
+- **A rate limit actually got hit — logged, not silently retried around, and
+  it broke something real:** `raw.githubusercontent.com` has its own
+  unauthenticated CDN rate limit, entirely separate from the
+  token-authenticated `api.github.com` core limit `GITHUB_TOKEN` covers —
+  confirmed by hitting it during this session's own exploratory `curl`s
+  against ky's source, unrelated to the app's ingest itself. Unlike Groq's
+  API (which returns an exact `x-ratelimit-reset-tokens` wait time,
+  see Phase 2/3), this CDN returns a bare `429` with **no `Retry-After`
+  header at all** — no way to know how long to wait. A subsequent re-ingest
+  attempt then hit this same limit for **all 53 of ky's files**, and
+  `ingest()` proceeded anyway: `buildGraph([])` on zero file graphs produced
+  an empty graph, which `persistGraph` then wrote to Redis, **silently
+  overwriting the good 121-symbol ingest from minutes earlier with
+  nothing.** This is a real architectural gap the rate limit exposed, not
+  just an inconvenience: a transient network failure had no guard against
+  corrupting a previously-good ingest. Fixed in `ingest.ts` — if every
+  attempted file fails, the function now throws a clear error instead of
+  persisting empty data over whatever was there before. Confirmed the fix
+  works while still rate-limited: a repeat attempt now fails loudly
+  (`All 53 files failed to fetch/parse -- refusing to persist an empty
+  graph...`) instead of silently corrupting anything further.
+
 ---
 
 ## Full pipeline (target architecture)
@@ -389,7 +465,12 @@ graphrag/
       Smoke-tested against `sample-repo` (matches the known-good 7
       symbols/83%) and against a real GitHub repo
       (`sindresorhus/p-timeout`, both shorthand and full-URL / `/tree/ref`
-      forms) to prove the fetch path, not just the local one.
+      forms) to prove the fetch path, not just the local one. **The
+      remaining gap — a real repo through the actual running app, not just
+      the CLI — closed after Phase 4**, see "Through the actual running
+      app, not the CLI" above: `sindresorhus/ky`, browser UI end to end,
+      real numbers, a genuine multi-hop blast radius, and a real rate
+      limit that surfaced and got fixed.
 - [x] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
       repo URL. Lives in `src/parser/graph-store.ts` (`persistGraph` /
       `loadGraph`), called automatically at the end of `ingest()`. Redis key
