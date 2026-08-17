@@ -248,6 +248,60 @@ have been a real risk unauthenticated.
   (`All 53 files failed to fetch/parse -- refusing to persist an empty
   graph...`) instead of silently corrupting anything further.
 
+**Follow-up — the guard alone wasn't the actual fix:** the persist-guard
+above stops a total-failure ingest from corrupting good data, but it doesn't
+stop the failure itself. Checked directly rather than assumed: `ingest.ts`
+was still fetching file content from the unauthenticated
+`raw.githubusercontent.com` CDN (`GITHUB_TOKEN` only ever covered the tree
+listing via `api.github.com`). Switched content fetching to the
+authenticated **Git Blobs API**
+(`GET /repos/{owner}/{repo}/git/blobs/{sha}` with the
+`application/vnd.github.raw+json` media type, using the blob SHA already
+returned by the tree listing) — now every file fetch counts against the
+same 60/5000-per-hour budget `GITHUB_TOKEN` already covers, instead of a
+separate, unauthenticated CDN limit with no `Retry-After` header and no way
+to know when it clears. `githubFetch` also now distinguishes GitHub's
+secondary/abuse rate limit (403/429 with `Retry-After`, triggered by
+request *pattern*, not budget) from the primary one, since "set
+`GITHUB_TOKEN`" doesn't fix that kind.
+
+Verified two ways before moving on:
+1. **Restoration**: `raw.githubusercontent.com` was still returning 429
+   with zero signal of when it'd clear when this fix landed — irrelevant
+   now, since the new path never touches it. Re-ingested `sindresorhus/ky`
+   through the real app and got back the *exact* pre-corruption numbers
+   (53 files, 121 symbols, 119/571 calls, 21%), then re-ran the
+   `mergeHeaders` blast-radius query and got the identical 5-node
+   `walkedNodes` list byte-for-byte — confirms the fix didn't just produce
+   *some* data, it restored the *correct* graph.
+2. **A second, deliberately different repo** — see below — to get a
+   resolution-rate data point that isn't just re-confirming ky's
+   external-API-heavy pattern.
+
+**A repo that's mostly internal logic, not external-API glue:**
+[immerjs/immer](https://github.com/immerjs/immer) (structural-sharing /
+proxy-based immutable-state library — its own algorithm, not a wrapper
+around fetch/DOM). Ingested through the real app: **46 files, 111 symbols,
+516/4270 calls resolved — 12%**, reported exactly as the app produced it,
+even though it's lower than ky's 21% and doesn't fit the "internal logic
+resolves better" expectation at face value.
+
+Investigated *why* rather than stopping at the headline number, and found
+something worth knowing for the write-up beyond either repo's specific
+result: **27 of the 46 files ingested are test files** (`ingest.ts`
+doesn't exclude test directories, by design — test code is legitimately
+part of a repo's call graph). Those 27 test files account for **3820 of
+the 4270 total calls (89%) but only 47 resolved** — test-runner and
+assertion-library calls (`test()`, `expect()`, matcher chains) are external
+by nature and were never going to resolve, the same shape of noise as
+`class-validator`'s test files, just far more dominant here since immer
+happens to have more test files (27) than source files (19). **Isolating
+just the 19 non-test source files: 450 calls, 150 resolved — 33%** —
+genuinely higher than ky's 21%, which does support the internal-logic
+hypothesis once the test-call noise is separated out. Both numbers are
+real and both are reported here; the raw 12% isn't wrong, it's just
+dominated by something other than what it looks like it's measuring.
+
 ---
 
 ## Full pipeline (target architecture)
@@ -455,12 +509,10 @@ graphrag/
       shorthand, list all `.ts`/`.tsx`/`.js`/`.jsx` files, run `extractFile`
       on each, pass all `FileGraph`s into `buildGraph`. Local directories are
       walked directly; GitHub repos use one REST API call
-      (`GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1`) to list files
-      — this keeps the rate-limited core API budget to O(1) calls regardless
-      of repo size — then fetch each file's content from
-      `raw.githubusercontent.com`, which sits outside that rate limit, capped
-      at 8 concurrent requests. `GITHUB_TOKEN` is read from the environment
-      if present (60 → 5000 req/hour) but isn't required for public repos.
+      (`GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1`) to list files,
+      then fetch each file's content — capped at 8 concurrent requests.
+      `GITHUB_TOKEN` is read from the environment if present (60 → 5000
+      req/hour) but isn't required for public repos.
       Run it with `npm run ingest -- <local-dir | github-url | owner/repo>`.
       Smoke-tested against `sample-repo` (matches the known-good 7
       symbols/83%) and against a real GitHub repo
@@ -471,6 +523,23 @@ graphrag/
       app, not the CLI" above: `sindresorhus/ky`, browser UI end to end,
       real numbers, a genuine multi-hop blast radius, and a real rate
       limit that surfaced and got fixed.
+
+      **Content fetching originally used `raw.githubusercontent.com`**
+      (unauthenticated, on the theory that it sat outside the rate-limited
+      core API entirely). That CDN has its own separate, unauthenticated
+      rate limit that `GITHUB_TOKEN` never covered — confirmed the hard way
+      when it returned 429 for every file of a real repo mid-session, with
+      no `Retry-After` header, and (before the persist-guard fix) silently
+      corrupted a good prior ingest. **Switched to the authenticated Git
+      Blobs API** (`GET /repos/{owner}/{repo}/git/blobs/{sha}` with the
+      `application/vnd.github.raw+json` media type, using the blob SHA
+      already returned by the tree listing) — now every file fetch counts
+      against the same 60/5000-per-hour budget `GITHUB_TOKEN` already
+      covers, closing the actual gap rather than just catching its
+      symptom. `githubFetch` also now distinguishes GitHub's secondary/
+      abuse rate limit (403/429 with `Retry-After`, triggered by request
+      *pattern* — e.g. too many concurrent requests — not budget) from the
+      primary one, since "set `GITHUB_TOKEN`" doesn't fix that kind.
 - [x] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
       repo URL. Lives in `src/parser/graph-store.ts` (`persistGraph` /
       `loadGraph`), called automatically at the end of `ingest()`. Redis key

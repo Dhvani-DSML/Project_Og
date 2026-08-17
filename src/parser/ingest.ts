@@ -129,17 +129,17 @@ async function loadLocalFileGraphs(
 
 const GITHUB_API = "https://api.github.com";
 
-function githubHeaders(): Record<string, string> {
+function githubHeaders(accept: string = "application/vnd.github+json"): Record<string, string> {
   const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
+    Accept: accept,
     "X-GitHub-Api-Version": "2022-11-28",
   };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   return headers;
 }
 
-async function githubFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { headers: githubHeaders() });
+async function githubFetch(url: string, accept?: string): Promise<Response> {
+  const res = await fetch(url, { headers: githubHeaders(accept) });
   if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
     const resetAt = res.headers.get("x-ratelimit-reset");
     const resetTime = resetAt ? new Date(Number(resetAt) * 1000).toLocaleTimeString() : "unknown";
@@ -148,6 +148,17 @@ async function githubFetch(url: string): Promise<Response> {
         (process.env.GITHUB_TOKEN
           ? "Even with GITHUB_TOKEN set, the limit was hit — try again later."
           : "Set GITHUB_TOKEN to raise the limit from 60/hour to 5000/hour.")
+    );
+  }
+  // Secondary/abuse rate limiting (too many concurrent requests) shows up as
+  // 403/429 with a Retry-After header rather than x-ratelimit-remaining: 0 --
+  // distinct from the primary limit above, worth a distinct message since
+  // "set GITHUB_TOKEN" doesn't fix this one (it's about request pattern, not
+  // budget).
+  const retryAfter = res.headers.get("retry-after");
+  if ((res.status === 403 || res.status === 429) && retryAfter) {
+    throw new Error(
+      `GitHub API secondary rate limit hit (too many concurrent requests) -- retry after ${retryAfter}s.`
     );
   }
   if (!res.ok) {
@@ -204,15 +215,25 @@ async function loadGithubFileGraphs(
   const fileGraphs: FileGraph[] = [];
   const sources = new Map<string, string>();
 
-  // Raw content is served from a CDN (raw.githubusercontent.com), not the
-  // rate-limited core API, so fetching one file at a time here doesn't
-  // burn through the 60-5000/hour budget the tree listing above respects.
-  // Still capped at a modest concurrency to be a polite client.
+  // Fetched via the authenticated Git Blobs API (git/blobs/{sha} with the
+  // raw media type), not raw.githubusercontent.com. That CDN has its own
+  // unauthenticated rate limit, entirely separate from -- and not covered
+  // by -- GITHUB_TOKEN or the core API budget: confirmed the hard way when
+  // it returned 429 for every file of a real repo mid-session, with no
+  // Retry-After header at all, and ingest() (before the guard a few commits
+  // back) silently persisted the resulting empty graph over a good one.
+  // This costs one authenticated core-API call per file instead, against
+  // the same 60/5000-per-hour budget the tree listing already respects --
+  // for a repo with hundreds of files that budget matters, which is exactly
+  // why GITHUB_TOKEN existing at all was already the plan; it just wasn't
+  // actually covering file content until now. Concurrency still capped at
+  // 8 to avoid tripping GitHub's separate secondary/abuse rate limit.
   await mapWithConcurrency(codeEntries, 8, async (entry) => {
-    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${entry.path}`;
     try {
-      const res = await fetch(rawUrl);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const res = await githubFetch(
+        `${GITHUB_API}/repos/${owner}/${repo}/git/blobs/${entry.sha}`,
+        "application/vnd.github.raw+json"
+      );
       const source = await res.text();
       fileGraphs.push(extractFile(entry.path, source));
       sources.set(entry.path, source);
