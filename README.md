@@ -278,7 +278,9 @@ graphrag/
       ingest.ts              # done: walk a whole repo dir / fetch from GitHub, call extract.ts per file
       graph-store.ts          # done: persistGraph/loadGraph, Upstash Redis, keyed by hash(repoKey)
     embeddings/
-      embed.ts               # NEW: chunk symbols, embed with transformers.js
+      fetch-model.ts          # done: one-time download of bundled model weights
+      models/                  # done: bundled all-MiniLM-L6-v2 weights (22.6MB, gitted)
+      embed.ts                  # done: AST-aware chunking (reuses extract.ts line ranges) + batched embed
       vector-store.ts          # NEW: Upstash Vector read/write
     agent/
       state.ts                  # NEW: LangGraph state type
@@ -341,11 +343,26 @@ graphrag/
       original build (7 nodes, 5 edges).
 
 ### Phase 2 — semantic half
-- [ ] `embed.ts`: for each symbol node already extracted, take its source text
+- [x] Verify `@xenova/transformers` cold-start before building on it — done
+      first, see "Embedding model cold-start" above. Decision: bundle the
+      model weights rather than switch to a hosted API.
+- [x] `embed.ts`: for each symbol node already extracted, take its source text
       (the actual function/class body, sliced by line range) as the chunk —
       this reuses the AST-aware boundaries from Phase 0, avoiding the
       "naive fixed-size chunking" failure mode described in the project's
-      own pitch. Embed with `all-MiniLM-L6-v2`.
+      own pitch. Embed with `all-MiniLM-L6-v2`, batched (32 chunks/call)
+      rather than one symbol at a time. `ingest.ts` now threads a
+      `sources: Map<file, text>` through its result so `embed.ts` can slice
+      exact line ranges without re-reading local files or re-fetching GitHub
+      content. Verified against `sample-repo`: all 7 chunks' sliced text
+      matches the symbol boundaries exactly (including a class body vs. its
+      one method sliced separately), 384-dim embeddings, ~500ms for the
+      whole batch including model init. One honest caveat: a cosine-similarity
+      sanity check (`loadConfig` vs. `validateConfig` vs. `startServer`) came
+      back inconclusive (0.508 vs. 0.505) — likely just sample-repo's 1-3 line
+      functions giving the model too little signal to differentiate, not a
+      chunking bug, but worth re-checking once real-repo functions are in the
+      mix during Phase 3 retrieval-quality tuning.
 - [ ] `vector-store.ts`: write embeddings to Upstash Vector with metadata
       (symbol id, file, line range). Implement top-k semantic search.
 

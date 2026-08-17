@@ -21,6 +21,10 @@ export type IngestResult = {
   build: BuildResult;
   skipped: { file: string; reason: string }[];
   persisted: boolean;
+  // Full source text per file (same relative path used as FileGraph.file),
+  // kept around so embed.ts can slice exact symbol line ranges without
+  // re-reading local files or re-fetching GitHub content.
+  sources: Map<string, string>;
 };
 
 /**
@@ -97,20 +101,24 @@ function walkLocalDir(root: string): string[] {
   return out;
 }
 
-async function loadLocalFileGraphs(dir: string): Promise<{ fileGraphs: FileGraph[]; skipped: IngestResult["skipped"] }> {
+async function loadLocalFileGraphs(
+  dir: string
+): Promise<{ fileGraphs: FileGraph[]; skipped: IngestResult["skipped"]; sources: Map<string, string> }> {
   const absFiles = walkLocalDir(dir);
   const fileGraphs: FileGraph[] = [];
   const skipped: IngestResult["skipped"] = [];
+  const sources = new Map<string, string>();
   for (const abs of absFiles) {
     const rel = path.relative(dir, abs).replace(/\\/g, "/");
     try {
       const source = fs.readFileSync(abs, "utf-8");
       fileGraphs.push(extractFile(rel, source));
+      sources.set(rel, source);
     } catch (e: any) {
       skipped.push({ file: rel, reason: e.message ?? String(e) });
     }
   }
-  return { fileGraphs, skipped };
+  return { fileGraphs, skipped, sources };
 }
 
 // --- GitHub REST API ---------------------------------------------------
@@ -183,13 +191,14 @@ async function loadGithubFileGraphs(
   owner: string,
   repo: string,
   refInput: string | undefined
-): Promise<{ fileGraphs: FileGraph[]; skipped: IngestResult["skipped"]; ref: string }> {
+): Promise<{ fileGraphs: FileGraph[]; skipped: IngestResult["skipped"]; ref: string; sources: Map<string, string> }> {
   const ref = refInput ?? (await resolveDefaultRef(owner, repo));
   const tree = await fetchGithubTree(owner, repo, ref);
   const codeEntries = tree.filter((e) => e.type === "blob" && isCodeFile(e.path));
 
   const skipped: IngestResult["skipped"] = [];
   const fileGraphs: FileGraph[] = [];
+  const sources = new Map<string, string>();
 
   // Raw content is served from a CDN (raw.githubusercontent.com), not the
   // rate-limited core API, so fetching one file at a time here doesn't
@@ -202,12 +211,13 @@ async function loadGithubFileGraphs(
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const source = await res.text();
       fileGraphs.push(extractFile(entry.path, source));
+      sources.set(entry.path, source);
     } catch (e: any) {
       skipped.push({ file: entry.path, reason: e.message ?? String(e) });
     }
   });
 
-  return { fileGraphs, skipped, ref };
+  return { fileGraphs, skipped, ref, sources };
 }
 
 // --- Public entry point --------------------------------------------------
@@ -218,21 +228,23 @@ export async function ingest(input: string): Promise<IngestResult> {
 
   let fileGraphs: FileGraph[];
   let skipped: IngestResult["skipped"];
+  let sources: Map<string, string>;
   let resolvedSource = source;
 
   if (source.kind === "local") {
-    ({ fileGraphs, skipped } = await loadLocalFileGraphs(source.dir));
+    ({ fileGraphs, skipped, sources } = await loadLocalFileGraphs(source.dir));
   } else {
     const result = await loadGithubFileGraphs(source.owner, source.repo, source.ref);
     fileGraphs = result.fileGraphs;
     skipped = result.skipped;
+    sources = result.sources;
     resolvedSource = { ...source, ref: result.ref };
   }
 
   const build = buildGraph(fileGraphs);
   const repoKey = repoKeyFor(resolvedSource);
   const persisted = await persistGraph(repoKey, build);
-  return { source: resolvedSource, repoKey, fileGraphs, build, skipped, persisted };
+  return { source: resolvedSource, repoKey, fileGraphs, build, skipped, persisted, sources };
 }
 
 // --- CLI ---------------------------------------------------------------
