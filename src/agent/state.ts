@@ -54,6 +54,11 @@ export const AgentStateAnnotation = Annotation.Root({
 
   graphResults: Annotation<GraphWalkResult[]>(lastWrite<GraphWalkResult[]>([])),
   vectorResults: Annotation<VectorMatch[]>(lastWrite<VectorMatch[]>([])),
+  // How many hops graphTraversal walked with. Starts at 2; the conditional
+  // loop in agent/graph.ts bumps it to 3 and re-runs the same node when the
+  // BFS frontier was still non-empty at the cutoff (confirmed real on
+  // sample-repo: loadConfig's blast radius missed a caller at hop 3).
+  hopDepth: Annotation<number>(lastWrite<number>(2)),
 
   // Set true the first time the conditional fallback loop fires, so it can
   // only ever fire once per query -- guards against ping-ponging between

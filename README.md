@@ -578,10 +578,64 @@ graphrag/
       real repo: correctly traced `IsDefined` → `ValidateBy` and explained
       the blast radius of changing `ValidateBy` across every decorator
       built on it, grounded in real code snippets with correct citations.
-- [ ] `agent/graph.ts`: wire these into an actual `StateGraph` with conditional
-      edges — this is what makes it a LangGraph project rather than a fixed
-      pipeline; don't flatten it into a plain function-call chain for
-      convenience.
+- [x] `agent/graph.ts`: a genuine `StateGraph` with conditional edges based on
+      `router.ts`'s output, not five functions called in a fixed sequence
+      with LangGraph wrapped around it after the fact:
+      - `router` fans out via `addConditionalEdges` returning an *array* of
+        next nodes — `["graphTraversal"]`, `["vectorRetrieval"]`, or both in
+        parallel for `taskType: "both"`.
+      - Two gate nodes (`graphQualityGate`, `vectorQualityGate`) sit between
+        the retrieval nodes and `compress`, using LangGraph's `Command` to
+        both decide the next node *and* update state in one step — needed
+        because the fallback loop has to flip `fallbackAttempted` (and
+        sometimes `hopDepth`) as part of the routing decision itself, not as
+        a separate node.
+      - **The conditional loop** (instruction: "one real conditional loop,
+        not just branching") has two conditions, both evidenced by real test
+        runs, not just written and assumed to work:
+        1. Single-path structural query, no anchor found in the graph at
+           all (`graphResults.length === 0`) → falls back to
+           `vectorRetrieval` on the raw query. Fired for real in testing: a
+           query naming a nonexistent symbol correctly fell back to vector
+           search, found nothing relevant there either, and the final
+           answer honestly said so instead of hallucinating.
+        2. `graphResults` includes any node at `hops === hopDepth` (the BFS
+           frontier was still non-empty when traversal stopped, i.e. likely
+           truncated) → re-invokes **the same `graphTraversal` node** with
+           `hopDepth + 1`, a genuine cycle in the graph structure, not just
+           a fallback to a different node. Fired for real: the
+           `loadConfig` blast-radius query that missed `bootstrap` at hop 3
+           (found while testing `graph-traversal.ts` in isolation,
+           documented above) now correctly reaches it after one
+           self-loop, confirmed via `walkedNodes` including `bootstrap` and
+           `hopDepth: 3` in the final state.
+        Both conditions are guarded by `fallbackAttempted`, capping the
+        total extra hops at one — no risk of the loop cycling forever.
+      - `walkedNodes` and `tokenStats` were checked as actually populated
+        across every test case (`npm run test:agent`), not just asserted
+        to exist: every run showed real symbol ids and real before/after
+        token counts, including a **53% reduction on the real 297-symbol
+        class-validator repo** — matching Phase 2's number, achieved this
+        time via the full orchestrated graph, not a hand-called pipeline.
+
+      Two real bugs found and fixed while testing end-to-end, neither
+      caught until actually running the compiled graph:
+      - Node name `"answer"` collided with the state channel `answer` --
+        LangGraph rejects a node sharing a name with a state field. Renamed
+        the node to `generateAnswer` (state field stays `answer`, matching
+        the originally-planned shape).
+      - Citation extraction (`answer.ts`) missed real citations twice over
+        at real scale: the model sometimes cites with full-width brackets
+        (`【id】` instead of `[id]`), and on the real repo it consistently
+        cited symbols by their bare name (`[ArrayContains]`) rather than
+        the full id (`src/decorator/array/ArrayContains.ts::ArrayContains`).
+        Both confirmed empirically, not guessed at — citation matching now
+        checks the answer text for either the full id or its bare name
+        (the part after `::`), independent of bracket style.
+- [x] `npm run test:agent` (`src/agent/test-agent.ts`): end-to-end coverage
+      across structural/semantic/both, the empty-anchor fallback, the
+      hop-depth-expansion loop, and one real-repo run — kept as a permanent
+      test, same as the per-node tests, not thrown away once green.
 
 ### Phase 4 — API + UI
 - [ ] `/api/ingest`: accepts a repo URL, runs Phase 1 + 2, returns a status.
