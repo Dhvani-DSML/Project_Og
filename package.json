@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "test:parser": "tsx src/parser/test-parse.ts",
+    "test:router": "tsx src/agent/nodes/test-router.ts",
     "ingest": "tsx src/parser/ingest.ts",
     "fetch-model": "tsx src/embeddings/fetch-model.ts"
   },
   "dependencies": {
+    "@langchain/langgraph": "^1.4.10",
     "@upstash/redis": "^1.38.2",
     "@upstash/vector": "^1.2.3",
     "@xenova/transformers": "^2.17.2",

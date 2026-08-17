@@ -472,9 +472,30 @@ graphrag/
       Phase 4's UI ever offers "ingest, then immediately ask a question."
 
 ### Phase 3 — LangGraph agent
-- [ ] `state.ts`: `{ query, taskType, graphResults, vectorResults, compressedContext, tokenStats, answer, citations, walkedNodes }`
-- [ ] `router.ts`: classify the question (structural / semantic / both) using
-      a cheap LLM call with a small few-shot prompt.
+- [x] `state.ts`: `{ query, taskType, graphResults, vectorResults, compressedContext, tokenStats, answer, citations, walkedNodes }`
+      plus two additions the original list above provably needed:
+      `repoKey` (no node can know which Redis graph or Vector namespace to
+      load without it — the original state type never named which repo it's
+      even operating on) and `targetSymbolHint` + `fallbackAttempted` (needed
+      by router.ts and the conditional loop in `agent/graph.ts`, see below).
+      Built on `Annotation.Root` with real per-field reducers, not a plain
+      object type — `walkedNodes` in particular accumulates
+      (dedup-union) across nodes instead of last-write-wins, since the
+      fan-out ("both") and fallback-loop cases both have more than one node
+      contribute to it in the same run, and Phase 5's graph visualization
+      depends entirely on this list being real and complete.
+- [x] `router.ts`: classify the question (structural / semantic / both) using
+      a cheap LLM call (`openai/gpt-oss-20b`) with a system prompt, plus
+      extracts a best-guess target symbol name from the query for
+      `graph-traversal.ts` to anchor on. **Tested standalone before wiring
+      anything else around it** (`npm run test:router`, 8 hand-written
+      questions spanning structural/semantic/both): 7/8 on the first pass,
+      one genuine borderline miss ("walk me through everything bootstrap
+      touches" landed semantic instead of both) — not silently accepted,
+      the system prompt was tightened with a couple more structural-signal
+      phrases ("everything X touches", "walk me through what X uses") and
+      re-run clean at 8/8. Kept as a real committed test
+      (`src/agent/nodes/test-router.ts`), not thrown away after passing.
 - [ ] `graph-traversal.ts`: implement three traversal modes on the graphology
       graph — forward N-hop, reverse N-hop ("blast radius"), and shortest
       path between two named symbols.

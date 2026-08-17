@@ -100,3 +100,14 @@ export async function embedFileGraphs(
 ): Promise<EmbeddedChunk[]> {
   return embedChunks(chunkSymbols(fileGraphs, sources));
 }
+
+/**
+ * Embeds a single ad-hoc string (a user's question, at query time) with the
+ * same model/pooling/normalization as chunkSymbols' output, so the result is
+ * directly comparable to what's stored in Upstash Vector.
+ */
+export async function embedQuery(text: string): Promise<number[]> {
+  const extractor = await getExtractor();
+  const output = await extractor(text, { pooling: "mean", normalize: true });
+  return Array.from(output.data as Float32Array);
+}

@@ -1,0 +1,82 @@
+import { Annotation } from "@langchain/langgraph";
+import type { SymbolNode } from "../parser/extract.js";
+import type { VectorMatch } from "../embeddings/vector-store.js";
+
+export type TaskType = "structural" | "semantic" | "both";
+
+export type GraphWalkResult = {
+  nodeId: string;
+  symbol: SymbolNode;
+  hops: number;
+  direction: "forward" | "reverse"; // forward = transitively calls; reverse = blast radius (calls it)
+};
+
+export type CompressedChunk = {
+  id: string;
+  file: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+  verbatim: boolean; // true = kept as-is in the prompt; false = replaced with a summary
+};
+
+export type Citation = {
+  symbolId: string;
+  file: string;
+  startLine: number;
+  endLine: number;
+};
+
+export type TokenStats = {
+  beforeTokens: number;
+  afterTokens: number;
+  reductionPercent: number;
+};
+
+const lastWrite = <T>(fallback: T) => ({ reducer: (_left: T, right: T) => right, default: () => fallback });
+
+export const AgentStateAnnotation = Annotation.Root({
+  // Set once at invocation, never updated by a node.
+  query: Annotation<string>,
+  // Which repo's graph/vectors to operate on. The README's originally
+  // planned state type omitted this entirely -- without it, no node can
+  // know which Redis graph or Vector namespace to load, so it's added here
+  // as a provable gap in the original plan, not a discretionary addition.
+  repoKey: Annotation<string>,
+
+  taskType: Annotation<TaskType>(lastWrite<TaskType>("both")),
+  // Best-guess symbol name router.ts extracted from the query (e.g.
+  // "loadConfig" from "what breaks if I change loadConfig?"), or null for
+  // genuinely nameless semantic questions. Used to anchor graph traversal
+  // and, in the fallback loop, to decide whether a semantic-path miss can
+  // even attempt a graph-path retry.
+  targetSymbolHint: Annotation<string | null>(lastWrite<string | null>(null)),
+
+  graphResults: Annotation<GraphWalkResult[]>(lastWrite<GraphWalkResult[]>([])),
+  vectorResults: Annotation<VectorMatch[]>(lastWrite<VectorMatch[]>([])),
+
+  // Set true the first time the conditional fallback loop fires, so it can
+  // only ever fire once per query -- guards against ping-ponging between
+  // the graph and vector nodes.
+  fallbackAttempted: Annotation<boolean>(lastWrite<boolean>(false)),
+
+  compressedContext: Annotation<CompressedChunk[]>(lastWrite<CompressedChunk[]>([])),
+  tokenStats: Annotation<TokenStats>(
+    lastWrite<TokenStats>({ beforeTokens: 0, afterTokens: 0, reductionPercent: 0 })
+  ),
+
+  answer: Annotation<string>(lastWrite<string>("")),
+  citations: Annotation<Citation[]>(lastWrite<Citation[]>([])),
+
+  // Accumulates across nodes rather than overwriting -- graphTraversal and
+  // vectorRetrieval each contribute their own node ids, and in the fan-out
+  // ("both") or fallback-loop case both run in the same query, so a plain
+  // last-write reducer would silently drop whichever ran first. This is
+  // exactly the field Phase 5's graph visualization depends on being real.
+  walkedNodes: Annotation<string[]>({
+    reducer: (left: string[], right: string[]) => [...new Set([...left, ...right])],
+    default: () => [],
+  }),
+});
+
+export type AgentState = typeof AgentStateAnnotation.State;

@@ -121,3 +121,24 @@ export async function queryVectors(
   const results = await ns.query({ vector: queryEmbedding, topK, includeMetadata: true });
   return results.map((r) => ({ id: String(r.id), score: r.score, metadata: r.metadata as ChunkMetadata }));
 }
+
+/**
+ * Looks up chunks by id (same ids as SymbolNode.id / graph node id) rather
+ * than by similarity. The persisted call graph (graph-store.ts) only stores
+ * symbol metadata -- file, line range, name -- not source text, so this is
+ * how graph-traversal results at query time get their actual code back
+ * without re-fetching/re-cloning the repo: Vector already has it, capped at
+ * 4000 chars, from ingestion.
+ */
+export async function fetchChunks(repoKey: string, ids: string[]): Promise<Map<string, ChunkMetadata>> {
+  const out = new Map<string, ChunkMetadata>();
+  if (ids.length === 0) return out;
+  const client = vectorClient();
+  if (!client) return out;
+  const ns = client.namespace(namespaceFor(repoKey));
+  const results = await ns.fetch(ids, { includeMetadata: true });
+  for (const r of results) {
+    if (r && r.metadata) out.set(String(r.id), r.metadata as ChunkMetadata);
+  }
+  return out;
+}
