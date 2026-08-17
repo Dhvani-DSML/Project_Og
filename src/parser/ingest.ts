@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { initParsers, extractFile } from "./extract.js";
 import { buildGraph } from "./graph.js";
+import { persistGraph } from "./graph-store.js";
 import type { FileGraph } from "./extract.js";
 import type { BuildResult } from "./graph.js";
 
@@ -19,6 +20,7 @@ export type IngestResult = {
   fileGraphs: FileGraph[];
   build: BuildResult;
   skipped: { file: string; reason: string }[];
+  persisted: boolean;
 };
 
 /**
@@ -228,7 +230,9 @@ export async function ingest(input: string): Promise<IngestResult> {
   }
 
   const build = buildGraph(fileGraphs);
-  return { source: resolvedSource, repoKey: repoKeyFor(resolvedSource), fileGraphs, build, skipped };
+  const repoKey = repoKeyFor(resolvedSource);
+  const persisted = await persistGraph(repoKey, build);
+  return { source: resolvedSource, repoKey, fileGraphs, build, skipped, persisted };
 }
 
 // --- CLI ---------------------------------------------------------------
@@ -244,6 +248,7 @@ async function main() {
 
   console.log(`Source: ${JSON.stringify(result.source)}`);
   console.log(`Repo key: ${result.repoKey}`);
+  console.log(`Persisted to Redis: ${result.persisted}`);
   console.log(`\n--- Stats ---`);
   console.log(result.build.stats);
   if (result.skipped.length) {

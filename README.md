@@ -219,14 +219,15 @@ in the write-up, don't pretend it's multi-language.
 GROQ_API_KEY=
 UPSTASH_VECTOR_REST_URL=
 UPSTASH_VECTOR_REST_TOKEN=
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
+UPSTASH_REDIS_REST_URL=       # configured, see .env (gitignored)
+UPSTASH_REDIS_REST_TOKEN=     # configured, see .env (gitignored)
 GITHUB_TOKEN=       # optional, raises the unauthenticated rate limit for public repo ingestion
 ```
 
-All four services have generous free tiers; sign-up is required before these
-can be filled in — flag this to the user rather than inventing placeholder
-values that silently fail.
+Upstash Redis is configured and verified working (real round-trip write/read,
+see Phase 1 checklist). Vector, Groq, and `GITHUB_TOKEN` are still unset —
+sign-up is required before those can be filled in; flag this to the user
+rather than inventing placeholder values that silently fail.
 
 ---
 
@@ -240,6 +241,7 @@ graphrag/
       graph.ts             # done
       test-parse.ts         # done
       ingest.ts              # done: walk a whole repo dir / fetch from GitHub, call extract.ts per file
+      graph-store.ts          # done: persistGraph/loadGraph, Upstash Redis, keyed by hash(repoKey)
     embeddings/
       embed.ts               # NEW: chunk symbols, embed with transformers.js
       vector-store.ts          # NEW: Upstash Vector read/write
@@ -289,11 +291,19 @@ graphrag/
       symbols/83%) and against a real GitHub repo
       (`sindresorhus/p-timeout`, both shorthand and full-URL / `/tree/ref`
       forms) to prove the fetch path, not just the local one.
-- [ ] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
-      repo URL, so it doesn't need to be rebuilt every query. Blocked on
-      Upstash credentials (see "Environment variables needed") — not yet
-      signed up for, per the existing instruction not to invent placeholder
-      values that silently fail.
+- [x] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
+      repo URL. Lives in `src/parser/graph-store.ts` (`persistGraph` /
+      `loadGraph`), called automatically at the end of `ingest()`. Redis key
+      is `graphrag:graph:<sha256(repoKey)>`; value is the repoKey, stats, and
+      graphology's own `graph.export()` output as JSON, reconstructed on load
+      via `graph.import(...)`. No-ops with a warning instead of throwing when
+      `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` aren't set, so
+      ingestion still works end-to-end without Redis. Credentials now
+      configured (in `.env`, gitignored). Verified as a real round trip, not
+      just a write: ingested `sample-repo`, then loaded it back in a separate
+      process and confirmed the reconstructed graph still traverses correctly
+      (`startServer` → `connectDB`), with node/edge counts matching the
+      original build (7 nodes, 5 edges).
 
 ### Phase 2 — semantic half
 - [ ] `embed.ts`: for each symbol node already extracted, take its source text

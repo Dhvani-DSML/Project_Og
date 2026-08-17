@@ -8,6 +8,7 @@
     "ingest": "tsx src/parser/ingest.ts"
   },
   "dependencies": {
+    "@upstash/redis": "^1.38.2",
     "graphology": "^0.26.0",
     "tree-sitter-wasms": "^0.1.13",
     "tsx": "^4.23.12",
