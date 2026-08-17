@@ -629,9 +629,19 @@ graphrag/
         (`【id】` instead of `[id]`), and on the real repo it consistently
         cited symbols by their bare name (`[ArrayContains]`) rather than
         the full id (`src/decorator/array/ArrayContains.ts::ArrayContains`).
-        Both confirmed empirically, not guessed at — citation matching now
-        checks the answer text for either the full id or its bare name
-        (the part after `::`), independent of bracket style.
+        First fix was two more string-matching patterns (full id OR bare
+        name, any bracket style) — caught both observed failures, but
+        pattern-matching free text for an unbounded set of ways a model
+        might format a reference was never going to hold up on a third
+        repo's different failure mode. Replaced with structured output
+        instead, the same `jsonMode` pattern already used in `router.ts`
+        and `compress.ts`: the model returns `{answer, citedIds: string[]}`
+        directly rather than inline-bracketed prose, and `citedIds` is
+        validated against the actual candidate ids (a hallucinated id that
+        was never in the context can't make it into `citations`). Re-ran
+        all five test cases including the exact real-repo query that broke
+        both prior string-matching attempts — correct citations every time,
+        with no pattern-matching left to break on a fourth format.
 - [x] `npm run test:agent` (`src/agent/test-agent.ts`): end-to-end coverage
       across structural/semantic/both, the empty-anchor fallback, the
       hop-depth-expansion loop, and one real-repo run — kept as a permanent
