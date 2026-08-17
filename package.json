@@ -1,0 +1,16 @@
+{
+  "name": "graphrag",
+  "version": "1.0.0",
+  "description": "GraphRAG engine for codebase question answering",
+  "type": "module",
+  "scripts": {
+    "test:parser": "tsx src/parser/test-parse.ts"
+  },
+  "dependencies": {
+    "graphology": "^0.26.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "web-tree-sitter": "^0.25.10"
+  }
+}
