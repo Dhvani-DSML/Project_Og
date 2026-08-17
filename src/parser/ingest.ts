@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 import { initParsers, extractFile } from "./extract.js";
 import { buildGraph } from "./graph.js";
 import { persistGraph } from "./graph-store.js";
+import { chunkSymbols, embedChunks } from "../embeddings/embed.js";
+import { upsertChunks } from "../embeddings/vector-store.js";
 import type { FileGraph } from "./extract.js";
 import type { BuildResult } from "./graph.js";
 
@@ -25,6 +27,8 @@ export type IngestResult = {
   // kept around so embed.ts can slice exact symbol line ranges without
   // re-reading local files or re-fetching GitHub content.
   sources: Map<string, string>;
+  embeddedCount: number;
+  vectorsWritten: boolean;
 };
 
 /**
@@ -244,7 +248,22 @@ export async function ingest(input: string): Promise<IngestResult> {
   const build = buildGraph(fileGraphs);
   const repoKey = repoKeyFor(resolvedSource);
   const persisted = await persistGraph(repoKey, build);
-  return { source: resolvedSource, repoKey, fileGraphs, build, skipped, persisted, sources };
+
+  const chunks = chunkSymbols(fileGraphs, sources);
+  const embedded = await embedChunks(chunks);
+  const vectorsWritten = await upsertChunks(repoKey, embedded);
+
+  return {
+    source: resolvedSource,
+    repoKey,
+    fileGraphs,
+    build,
+    skipped,
+    persisted,
+    sources,
+    embeddedCount: embedded.length,
+    vectorsWritten,
+  };
 }
 
 // --- CLI ---------------------------------------------------------------
@@ -261,6 +280,7 @@ async function main() {
   console.log(`Source: ${JSON.stringify(result.source)}`);
   console.log(`Repo key: ${result.repoKey}`);
   console.log(`Persisted to Redis: ${result.persisted}`);
+  console.log(`Embedded ${result.embeddedCount} symbols, written to Upstash Vector: ${result.vectorsWritten}`);
   console.log(`\n--- Stats ---`);
   console.log(result.build.stats);
   if (result.skipped.length) {

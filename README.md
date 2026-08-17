@@ -252,16 +252,17 @@ better than a hosted API's cold start would be anyway.
 
 ```
 GROQ_API_KEY=
-UPSTASH_VECTOR_REST_URL=
-UPSTASH_VECTOR_REST_TOKEN=
+UPSTASH_VECTOR_REST_URL=      # configured, see .env.local (gitignored)
+UPSTASH_VECTOR_REST_TOKEN=    # configured, see .env.local (gitignored)
 UPSTASH_REDIS_REST_URL=       # configured, see .env (gitignored)
 UPSTASH_REDIS_REST_TOKEN=     # configured, see .env (gitignored)
 GITHUB_TOKEN=       # optional, raises the unauthenticated rate limit for public repo ingestion
 ```
 
-Upstash Redis is configured and verified working (real round-trip write/read,
-see Phase 1 checklist). Vector, Groq, and `GITHUB_TOKEN` are still unset —
-sign-up is required before those can be filled in; flag this to the user
+Upstash Redis and Upstash Vector are both configured and verified working
+(real round-trip write/read for each, see Phase 1 and Phase 2 checklists).
+Groq and `GITHUB_TOKEN` are still unset — sign-up is required before those
+can be filled in; flag this to the user
 rather than inventing placeholder values that silently fail.
 
 ---
@@ -281,7 +282,7 @@ graphrag/
       fetch-model.ts          # done: one-time download of bundled model weights
       models/                  # done: bundled all-MiniLM-L6-v2 weights (22.6MB, gitted)
       embed.ts                  # done: AST-aware chunking (reuses extract.ts line ranges) + batched embed
-      vector-store.ts          # NEW: Upstash Vector read/write
+      vector-store.ts          # done: Upstash Vector read/write, namespaced per repo
     agent/
       state.ts                  # NEW: LangGraph state type
       nodes/
@@ -383,8 +384,32 @@ graphrag/
       pitch (see "What this actually is") is that relationship-walking
       catches what text similarity misses, and this is a concrete,
       measured instance of that, not a hypothetical one anymore.
-- [ ] `vector-store.ts`: write embeddings to Upstash Vector with metadata
-      (symbol id, file, line range). Implement top-k semantic search.
+- [x] `vector-store.ts`: write embeddings to Upstash Vector with metadata
+      (symbol id, file, line range, name, kind, exported, raw code text
+      capped at 4000 chars). Namespaced per repo (hash of repoKey) so
+      multiple ingested repos share one index without their nearest-neighbor
+      results bleeding into each other. Batched upserts (100/call). Before
+      any write: fetches `/info` and refuses to proceed if the index isn't
+      actually 384-dim cosine similarity — confirmed against the real index
+      (`wondrous-fox-1124`) before writing anything, not assumed. Implements
+      top-k query. `upsertChunks`/`queryVectors` now wired into `ingest()`
+      automatically, same as graph persistence.
+
+      Verified end-to-end against `sample-repo`: querying with `loadConfig`'s
+      own embedding returns itself at score 1.0, with `connectDB` (0.837) and
+      `validateConfig` (0.811) — the two functions that actually call/relate
+      to it — ranked above the unrelated `startServer`/`bootstrap` in a
+      second query, confirming the context-header fix above produces
+      coherent real rankings, not just better isolated cosine numbers.
+
+      One honest finding, not a code bug: the very first query immediately
+      after the first-ever upsert to a fresh namespace came back empty —
+      Upstash Vector has some indexing propagation delay before a write is
+      queryable. Resolved on its own moments later and hasn't recurred.
+      Not fixed with a retry/poll loop here because the real pipeline never
+      queries in the same breath as ingesting (ingest is one-time,
+      querying happens per chat message later) — but worth remembering if
+      Phase 4's UI ever offers "ingest, then immediately ask a question."
 
 ### Phase 3 — LangGraph agent
 - [ ] `state.ts`: `{ query, taskType, graphResults, vectorResults, compressedContext, tokenStats, answer, citations, walkedNodes }`
