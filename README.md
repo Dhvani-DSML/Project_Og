@@ -201,7 +201,7 @@ project**, avoiding a separate hosted backend.
 | Agent orchestration | `@langchain/langgraph` (JS) | Conditional routing + loops, not just a fixed chain |
 | Code parsing | `web-tree-sitter` + `tree-sitter-wasms` | Already working, no native build step |
 | Graph storage | `graphology`, serialized to **Upstash Redis** (free tier, REST-based) | Rebuild in-memory per invocation; no infra to manage |
-| Embeddings | `@xenova/transformers` (`all-MiniLM-L6-v2`), running in-process | Zero API cost, genuinely open source. If cold-start latency in serverless becomes a real problem, fall back to a free-tier hosted embedding API — note the tradeoff in the write-up either way, don't silently swap without noting why |
+| Embeddings | `@xenova/transformers` (`all-MiniLM-L6-v2`), running in-process, **model weights bundled with the deployment** (not downloaded at runtime) | Zero API cost, genuinely open source, verified fast enough once bundled — see "Embedding model cold-start" below |
 | Vector store | **Upstash Vector** (free tier, REST API) | Built for exactly this serverless pattern |
 | LLM | Groq free tier, Llama 3.3 70B or similar | Open-weight model, free access, fast enough for a live demo |
 | Graph visualization | `react-flow` or `vis-network` | Render the walked subgraph next to the answer |
@@ -210,6 +210,41 @@ project**, avoiding a separate hosted backend.
 Repo scope: **TypeScript/JavaScript only.** This is a deliberate scope cut to
 keep tree-sitter grammar handling simple within the deadline — say so plainly
 in the write-up, don't pretend it's multi-language.
+
+---
+
+## Embedding model cold-start (tested before building on it)
+
+The README previously flagged cold-start latency for `@xenova/transformers`
+running inside a Vercel serverless function as a real risk, not a
+hypothetical — this was tested in isolation, before writing any of the rest
+of Phase 2, per the working agreement not to build on unverified assumptions.
+
+Two scenarios, both against `Xenova/all-MiniLM-L6-v2` (quantized ONNX, the
+library's default):
+
+| Scenario | import | model load/init | first embed | **total** |
+|---|---|---|---|---|
+| Cold — no local cache, downloads from HF hub | 2,457ms | 14,554ms | 11ms | **~17,000ms** |
+| Warm disk, fresh process, network disabled | 251ms | 212ms | 12ms | **~474ms** |
+
+The model itself isn't slow — WASM init plus inference off local disk is
+under half a second, and a second `embed()` call in the same warm process
+took 5ms (relevant for batching hundreds of symbols per repo). The 17-second
+number only happens when the model has to be **downloaded over the network
+at request time**, which is what `transformers.js`'s default runtime
+download-and-cache behavior would do on every genuinely cold Vercel
+container — `/tmp` doesn't reliably survive between cold starts, so this
+isn't a one-time cost, it recurs for real users.
+
+The on-disk model (quantized ONNX weights + tokenizer) is 22.6MB — small
+enough to bundle directly into the function deployment.
+
+**Decision:** keep the local model (don't switch to a hosted embedding API),
+but bundle the weights with the deployment and set `allowRemoteModels: false`
+so cold starts read from local disk instead of the network. That's the
+~474ms row above on every cold start, with zero runtime network dependency —
+better than a hosted API's cold start would be anyway.
 
 ---
 
