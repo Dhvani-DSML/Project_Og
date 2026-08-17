@@ -239,7 +239,7 @@ graphrag/
       extract.ts          # done
       graph.ts             # done
       test-parse.ts         # done
-      ingest.ts              # NEW: walk a whole repo dir / fetch from GitHub, call extract.ts per file
+      ingest.ts              # done: walk a whole repo dir / fetch from GitHub, call extract.ts per file
     embeddings/
       embed.ts               # NEW: chunk symbols, embed with transformers.js
       vector-store.ts          # NEW: Upstash Vector read/write
@@ -269,17 +269,31 @@ graphrag/
 ## Build plan (phased — do them roughly in this order)
 
 ### Phase 1 — whole-repo ingestion (extend, don't rewrite, the parser)
-- [ ] `ingest.ts`: given a local directory or a GitHub repo URL, list all
-      `.ts`/`.tsx`/`.js`/`.jsx` files (via GitHub REST API for remote repos,
-      respecting rate limits), run `extractFile` on each, pass all `FileGraph`s
-      into `buildGraph`.
-- [ ] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
-      repo URL, so it doesn't need to be rebuilt every query.
-- [ ] Re-run against 2-3 *real* small-to-medium open source TS repos (not just
+- [x] Re-run against 2-3 *real* small-to-medium open source TS repos (not just
       the 3-file sample) to catch parsing edge cases the sample repo doesn't
-      cover — default exports, re-exports, `interface`/`type` declarations,
-      decorators. Note any new resolution gaps the same way the method-call
-      gap was noted above; don't silently patch and forget to mention it.
+      cover — done *before* `ingest.ts` itself, on request, so its fixes would
+      already be in place for real ingestion. See "Real-repo parsing gaps"
+      above.
+- [x] `ingest.ts`: given a local directory or a GitHub repo URL/`owner/repo`
+      shorthand, list all `.ts`/`.tsx`/`.js`/`.jsx` files, run `extractFile`
+      on each, pass all `FileGraph`s into `buildGraph`. Local directories are
+      walked directly; GitHub repos use one REST API call
+      (`GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1`) to list files
+      — this keeps the rate-limited core API budget to O(1) calls regardless
+      of repo size — then fetch each file's content from
+      `raw.githubusercontent.com`, which sits outside that rate limit, capped
+      at 8 concurrent requests. `GITHUB_TOKEN` is read from the environment
+      if present (60 → 5000 req/hour) but isn't required for public repos.
+      Run it with `npm run ingest -- <local-dir | github-url | owner/repo>`.
+      Smoke-tested against `sample-repo` (matches the known-good 7
+      symbols/83%) and against a real GitHub repo
+      (`sindresorhus/p-timeout`, both shorthand and full-URL / `/tree/ref`
+      forms) to prove the fetch path, not just the local one.
+- [ ] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
+      repo URL, so it doesn't need to be rebuilt every query. Blocked on
+      Upstash credentials (see "Environment variables needed") — not yet
+      signed up for, per the existing instruction not to invent placeholder
+      values that silently fail.
 
 ### Phase 2 — semantic half
 - [ ] `embed.ts`: for each symbol node already extracted, take its source text

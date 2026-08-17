@@ -4,7 +4,8 @@
   "description": "GraphRAG engine for codebase question answering",
   "type": "module",
   "scripts": {
-    "test:parser": "tsx src/parser/test-parse.ts"
+    "test:parser": "tsx src/parser/test-parse.ts",
+    "ingest": "tsx src/parser/ingest.ts"
   },
   "dependencies": {
     "graphology": "^0.26.0",
