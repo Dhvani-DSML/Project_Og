@@ -1,5 +1,5 @@
 import { groqChat, MODEL_LARGE } from "../groq";
-import type { CompressedChunk, Citation } from "../state";
+import type { CompressedChunk, Citation, TaskType } from "../state";
 
 // Structured output, not text pattern-matching. The first version asked the
 // model to cite inline as "[exact-id]" and then grepped the free-text answer
@@ -11,15 +11,33 @@ import type { CompressedChunk, Citation } from "../state";
 // for citedIds as an explicit JSON field, validated against the actual
 // candidate ids, does -- the model can no longer express a citation in a
 // shape this code fails to recognize.
-const SYSTEM_PROMPT = `You are a code intelligence assistant. Answer the user's question using ONLY the provided context -- a mix of verbatim code and one-line summaries, pulled from the codebase's call graph and semantic search.
+const BASE_SYSTEM_PROMPT = `You are a code intelligence assistant. Answer the user's question using ONLY the provided context -- a mix of verbatim code and one-line summaries, pulled from the codebase's call graph and semantic search.
 
 Respond with ONLY a JSON object: {"answer": string, "citedIds": string[]}.
 - "answer": your full answer, in plain prose. You may still reference symbols by name for readability, but do not rely on any particular bracket or formatting convention -- citation tracking does not parse this text.
 - "citedIds": the exact ids (from the context headers below, e.g. "file.ts::functionName") of every symbol you actually relied on to answer. Only include ids that appear in the context. If the context doesn't contain enough information to answer confidently, say so in "answer" and leave "citedIds" empty rather than guessing.`;
 
+// Every context chunk's id already carries its file (file.ts::name), and
+// every walked graph node is grounded in a specific file -- but left to its
+// own devices the model tends to answer "what breaks if I change X" as one
+// flat list of function names with no file structure, which is a worse
+// answer to a question about blast radius than it needs to be: the point of
+// walking the graph is knowing exactly where the damage lands, not just
+// that it lands somewhere. Only added for structural/both queries -- a
+// semantic "explain how X works" question doesn't benefit from being forced
+// into file sections the same way.
+const FILE_GROUPING_INSTRUCTIONS = `
+
+This question involves the codebase's call graph (structural/blast-radius reasoning). Organize "answer" by file, with exactly one section per distinct file path that appears among the context's ids below (the part before "::") -- never two sections for the same file, even when multiple symbols in it are affected; cover all of that file's affected symbols together as bullet points under its one heading. Each heading line must be the bare file path and nothing else -- no function name, no parenthetical, no suffix. Under each heading, explain specifically what breaks (or is affected) in that file and why, grounded in the actual code shown. Do not produce one flat list of function names with no file grouping, and do not output anything about how many files there are or how you organized the answer -- just the file sections themselves. If every affected symbol is in a single file, write one file section.`;
+
+function buildSystemPrompt(taskType: TaskType): string {
+  return taskType === "semantic" ? BASE_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT + FILE_GROUPING_INSTRUCTIONS;
+}
+
 export async function generateAnswer(
   query: string,
-  compressedContext: CompressedChunk[]
+  compressedContext: CompressedChunk[],
+  taskType: TaskType
 ): Promise<{ answer: string; citations: Citation[] }> {
   if (compressedContext.length === 0) {
     return {
@@ -36,7 +54,7 @@ export async function generateAnswer(
   const content = await groqChat(
     MODEL_LARGE,
     [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: buildSystemPrompt(taskType) },
       { role: "user", content: `Context:\n\n${contextBlock}\n\nQuestion: ${query}` },
     ],
     { jsonMode: true, temperature: 0.3 }

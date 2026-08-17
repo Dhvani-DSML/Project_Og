@@ -77,7 +77,7 @@ const builder = new StateGraph(AgentStateAnnotation)
     return compressContext(state.repoKey, state.graphResults, state.vectorResults);
   })
   .addNode("generateAnswer", async (state: AgentState) => {
-    return generateAnswer(state.query, state.compressedContext);
+    return generateAnswer(state.query, state.compressedContext, state.taskType);
   });
 
 builder

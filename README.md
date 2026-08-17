@@ -304,6 +304,54 @@ dominated by something other than what it looks like it's measuring.
 
 ---
 
+## Answer node: group blast-radius answers by file
+
+Before Phase 5, one improvement to `answer.ts`: every `walkedNodes` entry
+already carries its file in the symbol id (`file.ts::functionName`), but
+left to its own devices the model answered "what breaks if I change X" as
+one flat list of function names with no file structure — a weaker answer
+to a blast-radius question than it needs to be, since knowing exactly
+*where* the damage lands is the point of walking the graph, not just that
+it lands somewhere.
+
+`generateAnswer` now takes `taskType` and, for `structural`/`both` queries
+only (a semantic "explain how X works" question doesn't benefit from being
+forced into file sections the same way — confirmed still reads as natural
+narrative, unaffected), appends an instruction requiring exactly one
+section per distinct file, covering every affected symbol in that file
+together.
+
+Tested against the exact already-verified `ky` `mergeHeaders` case (5
+nodes, 2 hops, both directions — see above) specifically because the
+correct grouping for that case was already known and checkable by eye:
+`source/utils/merge.ts` should hold `mergeHeaders`/`mergeHeaderContainers`/
+`deepMergeInternal`/`deepMerge`, `source/core/Ky.ts` should hold
+`Ky.constructor`, alone. First two attempts didn't fully hold up under
+testing, not just written and assumed to work:
+- **Attempt 1** produced two sections for the same file
+  (`source/utils/merge.ts` and a separate `source/utils/merge.ts
+  (deepMergeInternal)`) — the instruction said "one section per file" but
+  didn't forbid a function-name suffix on the heading, so the model treated
+  a different function as license for a different heading.
+- **Attempt 2** (numbered-steps phrasing: "1. list the files, 2. write that
+  many sections...") fixed the splitting but leaked the count as literal
+  output text (a run's answer started with a bare `2` on its own line) —
+  the model followed the enumerated steps as things to narrate, not silent
+  reasoning.
+- **Attempt 3**: single-paragraph instruction, explicit "heading line must
+  be the bare file path and nothing else," explicit "do not output
+  anything about how many files there are or how you organized the
+  answer." Re-ran the identical `mergeHeaders` case twice — both times
+  exactly two sections, `source/utils/merge.ts` (all four
+  merge.ts-symbols together) and `source/core/Ky.ts`, no leaked meta-text,
+  no split file. Also re-verified against `sample-repo`'s `loadConfig`
+  case (3 clean sections: `config.ts`, `db.ts`, `server.ts`) and against
+  class-validator's real 112-node `ValidateBy` blast radius (3 clean
+  sections at real scale, not just the toy case) — the fix holds beyond
+  the one case it was tuned against.
+
+---
+
 ## Full pipeline (target architecture)
 
 ```
