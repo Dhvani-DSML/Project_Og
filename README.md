@@ -1,4 +1,4 @@
-# GraphRAG — multi-hop code intelligence agent
+# Ripple — multi-hop code intelligence agent
 
 ## Context for whoever (human or Claude Code) picks this up
 
@@ -557,7 +557,7 @@ defaults if unset, not required to be set explicitly.
 ## Directory structure (target — extend what exists, don't restructure it)
 
 ```
-graphrag/
+ripple/
   src/
     parser/
       extract.ts          # done
@@ -1006,14 +1006,192 @@ graphrag/
       graph, same anchor highlighting, and confirmed a semantic-only
       question (no `walkedEdges`) correctly renders no graph panel at all.
 
+**Post-deploy: two more graph-panel reports, investigated together, turned
+out to be two different things — not one repeat of the finding above.**
+
+1. **"What breaks if I change deepMerge?" rendered an empty-looking graph
+   panel on the live deployed app — a real bug, not the rendering-completion
+   delay above.** Checked the raw API response first: `walkedNodes` (15) and
+   `walkedEdges` (20) both came back fully populated, so the data was never
+   the problem. Reproduced live in the browser and inspected the actual DOM
+   (not just a screenshot) at the moment it appeared blank: all 15 node
+   elements and 20 edge elements existed correctly, console had zero errors,
+   and — unlike the finding above — it did **not** self-resolve after 30+
+   seconds of waiting, a manual "Fit View" click, or a window resize.
+   Pulled each node's actual computed `transform` and found the real cause:
+   `deepMerge`'s call graph contains a genuine multi-node cycle
+   (`deepMerge → deepMergeInternal → mergeHooks → newHookValue →
+   deepMerge`, confirmed by tracing the walked edges), and
+   `GraphVisualization.tsx`'s `computeLayout` only guarded against
+   single-node self-loops (`if (e.source === e.target) continue`), not real
+   cycles. Its BFS-layering relaxation (`column = 1 + max(predecessor
+   columns)`, re-queuing on increase) never stabilizes on a genuine cycle —
+   each lap pushes every cycle member's column higher, so by the time the
+   iteration guard exhausted, the four cycle nodes (and everything
+   downstream of them) had been relaxed out to `translate(8360-9020px,
+   ...)`, thousands of pixels outside the 785x460px panel, while the two
+   real roots correctly sat at column 0. Nodes existed the whole time; they
+   were just positioned off-screen. Neither Phase 5's 5-node `mergeHeaders`
+   case nor the 112-node `ValidateBy` case happened to contain an actual
+   multi-node cycle (only self-loops, which were already handled), which is
+   why this never surfaced before.
+
+   **Fixed the column-cap half**, not just documented: capped the column
+   value to `nodeIds.length` (`Math.min(col + 1, nodeIds.length)`). No
+   acyclic layout ever legitimately needs more columns than there are
+   nodes, so this is a no-op for every real DAG case -- verified by
+   replaying the fix's exact algorithm against both the real `deepMerge`
+   edge data (max column converges to 15, the cap, in 93 of 235 allowed
+   iterations, guard not exhausted) and the known-good `mergeHeaders`
+   5-node case (identical columns to before: roots at 0, `mergeHeaders`
+   at 3). Node positions were now correctly bound to a maximum of
+   `translate(3300px, ...)` instead of ~9020px.
+
+   **That still wasn't the whole bug.** A user report after this fix
+   shipped showed the panel still empty for the identical `deepMerge`
+   query. Re-investigated rather than assumed fixed: `walkedNodes`/
+   `walkedEdges` were still fully correct, all 15 node and 20 edge elements
+   still existed in the DOM, zero console errors -- and the viewport was
+   still sitting at the untouched `translate(0px, 0px) scale(1)` default,
+   regardless of the now-bounded node positions. The column cap fixed
+   *how far* a cycle could push nodes, but never addressed *why* the panel
+   wasn't fitting its view to whatever positions the nodes actually had --
+   including the small, never-buggy `mergeHeaders` case, which had only
+   ever looked correct by coincidence (its whole layout happens to fit
+   inside the panel's default, never-actually-fitted view).
+
+   Traced into `@xyflow/react`'s own source rather than guessed at further:
+   the `fitView` boolean prop on `<ReactFlow>` only fits once, at initial
+   mount, against `useNodesState<Node>([])`'s starting empty array -- the
+   real positions land a render later, so it was fitting to nothing and
+   never re-running once real data arrived. Switching to the imperative
+   `fitView()` call looked like the fix, but its returned Promise silently
+   hung forever: `fitView()` doesn't fit synchronously, it sets
+   `fitViewQueued: true` in the store and only resolves once a later
+   internal pass sees `fitViewQueued && nodesInitialized` both true, and
+   `nodesInitialized` depends on `userNode.measured.width/height` -- a
+   field distinct from the top-level `width`/`height` already set on each
+   node, which explicit sizing had always bypassed. Added `measured`
+   explicitly to close that gap -- and confirmed, via direct internal store
+   inspection, that every precondition then became genuinely correct
+   (container dimensions non-zero, `panZoom` initialized, `measured`
+   present) and `fitView()`'s promise resolved `true` on every call, on
+   both local dev and this live deployment. The viewport still never
+   visually moved off the default. Whatever `fitViewport()` does
+   internally past a resolved promise isn't reliably reflected in this
+   component's actual rendered DOM, for a reason not worth chasing further
+   under deadline pressure once a direct alternative existed.
+
+   **Final fix**: stopped asking the library to infer the fit
+   asynchronously and computed it directly instead, since this component
+   already knows every node's exact position from `computeLayout` above.
+   A `useRef` on the panel reads its real, measured `getBoundingClientRect()`
+   at runtime (the panel's width is fluid, not a fixed CSS value); the
+   node bounding box is computed from the same `nodes` state already
+   rendered; `setViewport({ x, y, zoom }, { duration: 0 })` -- the same
+   underlying `panZoom.setViewport()` call `fitViewport()` makes
+   internally, with none of the queue/`nodesInitialized` indirection in
+   between -- applies it directly. Verified on the real deployment, not
+   just theorized: `deepMerge` now renders at
+   `translate(40px, 147px) scale(0.202)` (matching a hand-computed
+   785px / 3490px ≈ 0.202 by eye), all 15 nodes and 20 edges visible in a
+   screenshot; re-ran the `mergeHeaders` 5-node case immediately after on
+   the same deployment and got `translate(40px, 188px) scale(0.73)`, 5/5
+   nodes and edges -- confirming the new mechanism handles both the
+   previously-broken large/cyclic case and the previously-coincidentally-
+   working small case correctly, not just the one case being chased.
+
+2. **"What breaks if I change the Ky constructor?" is a real, distinct
+   scope-boundary gap, not a bug** — confirmed via the raw API, not
+   assumed: `targetSymbolHint` came back as `"Ky"` (the class), not
+   `"Ky.constructor"`, so `walkedNodes` had exactly one entry (the class
+   node itself) and `walkedEdges` was empty. `graph-traversal.ts`'s
+   `findAnchors` matches a hint against a node's bare `name` in tiers
+   (exact, then case-insensitive, then substring), returning as soon as any
+   tier has a match. The class symbol's own name is literally `"Ky"`, an
+   exact match, so it wins outright -- `"Ky.constructor"` (which would only
+   qualify at the looser substring tier) never even gets considered. The
+   UI's existing `walkedEdges.length > 0` gate correctly suppressed the
+   graph panel here; this isn't a rendering bug, it's the anchor resolver
+   picking the class over one of its own members when a natural-language
+   question collapses to the class's bare name. **Known limitation, not
+   fixed**: natural-language descriptions of a specific member (a
+   constructor, a specific overload) aren't reliably resolved the way an
+   exact member name is -- a real, worth-noting scope boundary for the
+   heuristic resolver, consistent with how this project has documented
+   every other resolution-heuristic edge case throughout, not worth a
+   same-day fix this close to the deadline.
+
 ### Phase 6 — deploy + submission polish
-- [ ] Deploy to Vercel, verify cold-start behavior of the WASM parser and the
-      embedding model in a serverless function specifically (this is the most
-      likely place for a nasty last-minute surprise — test it early in this
-      phase, not at the end).
-- [ ] Test end-to-end against 2-3 real repos.
-- [ ] Write the submission doc (what was built and why, architecture,
-      decision log, known limitations, GitHub link, Vercel link).
+- [x] Deployed to Vercel (Node.js runtime, not Edge, on both API routes —
+      the WASM parser and local embedding model need real filesystem
+      access). Explicit `maxDuration` set on both routes rather than
+      relying on an unstated default: 300s on `/api/ingest`, 290s on
+      `/api/query` (raised from an initial 120s after a real production
+      timeout — see below).
+
+      Verified cold-start behavior directly, not assumed, and found three
+      real deployment-blocking issues before they could surface mid-demo:
+      1. `outputFileTracingIncludes`/`Excludes` in `next.config.mjs` used
+         source-file globs as keys instead of the route-path globs Next.js
+         actually requires — silently matched nothing on both Turbopack and
+         webpack the entire time it was in place.
+      2. `libonnxruntime.so.1.14.0`, a native shared library `dlopen()`'d by
+         `onnxruntime-node`'s compiled addon (not `require()`'d in JS),
+         is invisible to any JS-level file tracer — first production
+         ingest failed outright with "cannot open shared object file"
+         until this was explicitly included.
+      3. `extract.ts` never called `.delete()` on parsed `web-tree-sitter`
+         trees — WASM heap memory invisible to JS's GC, leaking across
+         every file in a repo. Parsing 53 files pushed RSS from 99MB to
+         938MB before embedding even started. Fixed, verified via
+         `test:parser` (byte-identical output, zero behavior change).
+      4. `onnxruntime-node`'s CPU arena allocator grew unboundedly with the
+         embedding batch size in use (32), pushing RSS to 2.19GB on the
+         same real ingest — over Vercel Hobby's fixed, non-configurable
+         2GB ceiling. Reduced `embed.ts`'s `BATCH_SIZE` to 8, holding peak
+         RSS to ~870MB with no meaningful change in wall-clock time.
+- [x] Renamed the project from "GraphRAG" to **Ripple** across the UI,
+      metadata, `package.json`, and this README, and gave the UI a
+      deliberate visual pass (teal/purple/coral accent system matching the
+      relationships/semantic/compression concepts already established in
+      the architecture diagram, distinctive header typography, an
+      animated compression bar, more visual weight on the graph panel).
+- [x] Found and fixed two real bugs in the graph panel post-deploy, neither
+      the same as Phase 5's original rendering-completion-delay finding —
+      full root-cause writeup above, under Phase 5. In short: a genuine
+      multi-node cycle in real code (`deepMerge → deepMergeInternal →
+      mergeHooks → newHookValue → deepMerge`) broke the BFS-layering
+      layout's column computation, and — the deeper issue underneath that
+      — `@xyflow/react`'s `fitView()` never reliably fit the viewport to
+      real node positions at all (traced into the library's own source:
+      its queued fit only resolves once an internal `nodesInitialized`
+      flag is true, which requires a `measured` field distinct from the
+      `width`/`height` this component was already setting). Replaced the
+      library's async fit inference with a direct, self-computed
+      `setViewport()` call — verified live on both the previously-broken
+      cyclic case and the previously-coincidentally-working small case.
+- [x] Found and fixed a real production timeout under compound queries:
+      "what breaks *and* explain X" routes to `taskType: "both"`, firing
+      more Groq calls per request than a single-mode query. A request hit
+      Groq's per-minute rate limit twice in a row (60.5s wait each,
+      confirmed via Vercel logs) — 121s of retry-waiting alone, already
+      past the old 120s `maxDuration` before a 3rd retry was even
+      attempted. `groqChat`'s retry logic already waits the exact time
+      Groq reports (correct — retrying sooner would just fail again
+      before the token bucket refills), so the real fix was giving the
+      route itself enough headroom: raised to 290s, just under Vercel
+      Hobby's actual 300s ceiling.
+- [x] Test end-to-end against real repos, both via the CLI/direct pipeline
+      calls (see "Real-repo parsing gaps" and the five-repo table above)
+      and, separately, through the actual deployed app: `sindresorhus/ky`
+      re-ingested and re-queried on the live Vercel URL after every major
+      deploy this phase produced, confirming the exact same numbers each
+      time (53 files, 121 symbols, 119/571 calls, 21%) and the same
+      5-node `mergeHeaders` blast radius — the fixes changed
+      infrastructure and rendering, not the underlying pipeline's
+      correctness.
+- [x] Write the submission doc — see `SUBMISSION.md` at the project root.
 
 ---
 
