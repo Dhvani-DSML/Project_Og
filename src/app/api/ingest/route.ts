@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ingest } from "../../../parser/ingest";
 
+// Node.js runtime, not Edge -- extract.ts loads WASM grammars via fs +
+// path.join(process.cwd(), ...) and embed.ts reads the bundled ONNX model
+// the same way. Edge's runtime doesn't give reliable filesystem access for
+// either.
+export const runtime = "nodejs";
+// Real repos take real time: ky (53 files) measured at ~45s end to end
+// (parse, graph, persist, embed, upsert). Larger repos need headroom.
+// Vercel's own default/max on Hobby is already 300s with Fluid compute, so
+// this is explicit rather than relying on an unstated default, not an
+// attempt to exceed any plan's ceiling.
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {

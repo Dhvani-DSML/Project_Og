@@ -1,4 +1,4 @@
-import { Parser, Language, Node as SyntaxNode } from "web-tree-sitter";
+import { Parser, Language, Node as SyntaxNode, Tree } from "web-tree-sitter";
 import path from "node:path";
 import fs from "node:fs";
 
@@ -70,6 +70,28 @@ export type FileGraph = {
 export function extractFile(filePath: string, source: string): FileGraph {
   const parser = parserFor(filePath);
   const tree = parser.parse(source);
+  // parse() can genuinely return null (catastrophic parse failure, e.g.
+  // garbled encoding) -- surfaced by `next build`'s strict type-check,
+  // which tsx's transpile-only dev runs never enforced. Throwing here
+  // integrates with the existing pattern: every extractFile() caller
+  // (ingest.ts's loadLocalFileGraphs/loadGithubFileGraphs) already wraps
+  // the call in try/catch and records the failure in `skipped` rather than
+  // crashing the whole ingest over one bad file.
+  if (!tree) throw new Error(`tree-sitter failed to parse ${filePath} (returned null tree)`);
+  try {
+    return extractFromTree(filePath, tree);
+  } finally {
+    // web-tree-sitter's Tree/Node objects are backed by WASM heap memory,
+    // invisible to JS's GC -- without this, every parsed tree leaks for the
+    // life of the process. Confirmed as the cause of a production OOM:
+    // parsing 53 files pushed RSS from 99MB to 938MB before embedding even
+    // started, on a shared parser instance reused across every file in a
+    // repo (see initParsers -- one tsParser/tsxParser for the whole ingest).
+    tree.delete();
+  }
+}
+
+function extractFromTree(filePath: string, tree: Tree): FileGraph {
   const root = tree.rootNode;
 
   const symbols: SymbolNode[] = [];
@@ -94,6 +116,9 @@ export function extractFile(filePath: string, source: string): FileGraph {
   // Walk every call_expression inside a given subtree, recording the callee name.
   function collectCalls(node: SyntaxNode, ownerId: string) {
     for (const child of node.children) {
+      // `children` is typed (Node | null)[] -- tree-sitter can have gaps
+      // for certain grammar constructs. Skip rather than crash.
+      if (!child) continue;
       if (child.type === "call_expression") {
         const fn = child.childForFieldName("function");
         if (fn) {
@@ -114,6 +139,8 @@ export function extractFile(filePath: string, source: string): FileGraph {
   }
 
   for (const rawNode of root.children) {
+    if (!rawNode) continue; // see collectCalls() above -- (Node | null)[]
+
     // `export function foo() {}` parses as export_statement -> function_declaration.
     // Unwrap it so the checks below see the real declaration node, while
     // isExported() (which walks back up parents) still reports true.
@@ -127,7 +154,7 @@ export function extractFile(filePath: string, source: string): FileGraph {
       const sourceNode = node.childForFieldName("source");
       const sourcePath = sourceNode ? sourceNode.text.replace(/['"]/g, "") : "";
       const clause = node.namedChildren.find(
-        (c) => c.type === "import_clause"
+        (c): c is SyntaxNode => c !== null && c.type === "import_clause"
       );
       if (clause) {
         for (const spec of clause.descendantsOfType([
@@ -135,6 +162,7 @@ export function extractFile(filePath: string, source: string): FileGraph {
           "identifier",
           "namespace_import",
         ])) {
+          if (!spec) continue;
           const local =
             spec.childForFieldName("alias")?.text ?? spec.text;
           if (local && sourcePath) imports.push({ localName: local, sourcePath });
@@ -178,6 +206,7 @@ export function extractFile(filePath: string, source: string): FileGraph {
         const body = node.childForFieldName("body");
         if (body) {
           for (const member of body.namedChildren) {
+            if (!member) continue;
             if (member.type === "method_definition") {
               const mName = member.childForFieldName("name");
               if (mName) {
@@ -202,7 +231,7 @@ export function extractFile(filePath: string, source: string): FileGraph {
     // const foo = (...) => {}   /   const foo = function() {}
     if (node.type === "lexical_declaration") {
       for (const decl of node.namedChildren) {
-        if (decl.type !== "variable_declarator") continue;
+        if (!decl || decl.type !== "variable_declarator") continue;
         const nameNode = decl.childForFieldName("name");
         const valueNode = decl.childForFieldName("value");
         if (

@@ -4,7 +4,15 @@ import type { FileGraph, SymbolNode } from "../parser/extract";
 
 const MODELS_DIR = path.join(process.cwd(), "src/embeddings/models");
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
-const BATCH_SIZE = 32;
+// onnxruntime-node's CPU arena allocator grows in bursts per model() call
+// and never releases back to the OS -- confirmed on a real production OOM
+// (Vercel Hobby's fixed, non-configurable 2GB ceiling): batches of 32
+// pushed RSS to 2.19GB ingesting ky (121 chunks, one legitimately large
+// class among them). Batches of 8 hold peak RSS to ~870MB for the same
+// repo -- smaller per-call tensors, so the arena never needs to grow as
+// large in the first place. More model() calls, but each is far cheaper,
+// and total wall time stayed well under maxDuration (~20s locally).
+const BATCH_SIZE = 8;
 
 export type SymbolChunk = {
   id: string; // same id as SymbolNode.id, e.g. "server.ts::startServer"
