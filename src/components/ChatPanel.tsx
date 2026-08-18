@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import GraphVisualization from "./GraphVisualization";
+import CompressionBar from "./CompressionBar";
 
 type IngestStats = {
   files: number;
@@ -114,8 +115,8 @@ export default function ChatPanel() {
   return (
     <div className="app">
       <header className="header">
-        <h1>GraphRAG</h1>
-        <p className="subtitle">Multi-hop code intelligence — ask what breaks, not just what's similar.</p>
+        <h1>Ripple</h1>
+        <p className="subtitle">See how a change ripples through your codebase, not just what looks similar.</p>
       </header>
 
       <form className="ingest-form" onSubmit={handleIngest}>
@@ -145,24 +146,17 @@ export default function ChatPanel() {
       )}
 
       {lastTokenStats && (
-        <div className="token-panel">
-          <div className="token-panel-label">Context compression, last query</div>
-          <div className="token-panel-number">
-            {lastTokenStats.beforeTokens.toLocaleString()} → {lastTokenStats.afterTokens.toLocaleString()}
-            <span className="token-panel-unit"> tokens</span>
-          </div>
-          <div className="token-panel-reduction">
-            {lastTokenStats.reductionPercent >= 0
-              ? `${lastTokenStats.reductionPercent}% reduction`
-              : `${Math.abs(lastTokenStats.reductionPercent)}% larger (nothing here was worth compressing)`}
-          </div>
-        </div>
+        <CompressionBar
+          beforeTokens={lastTokenStats.beforeTokens}
+          afterTokens={lastTokenStats.afterTokens}
+          reductionPercent={lastTokenStats.reductionPercent}
+        />
       )}
 
       <div className="chat">
         {messages.map((m, i) => (
           <div key={i} className={`message message-${m.role}`}>
-            <div className="message-role">{m.role === "user" ? "You" : "GraphRAG"}</div>
+            <div className="message-role">{m.role === "user" ? "You" : "Ripple"}</div>
             <div className="message-content">{m.content}</div>
             {m.citations && m.citations.length > 0 && (
               <div className="citations">
@@ -186,7 +180,16 @@ export default function ChatPanel() {
             )}
           </div>
         ))}
-        {queryLoading && <div className="message message-assistant message-pending">Thinking…</div>}
+        {queryLoading && (
+          <div className="message message-assistant message-pending">
+            <span className="ripple-loader" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            Thinking…
+          </div>
+        )}
       </div>
 
       <form className="ask-form" onSubmit={handleAsk}>

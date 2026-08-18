@@ -1,3 +1,29 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a20;
+  --panel-alt: #1a1d24;
+  --border: #22262e;
+  --border-strong: #2a2d35;
+  --text: #e6e8eb;
+  --text-muted: #9098a4;
+  --text-dim: #6b7280;
+
+  /* Same three-way system as the architecture diagram: teal for graph
+     relationships, purple for semantic/meaning, coral for compression. */
+  --accent-teal: #2dd4bf;
+  --accent-teal-dim: #0f766e;
+  --accent-teal-glow: rgba(45, 212, 191, 0.25);
+  --accent-purple: #b39bfa;
+  --accent-purple-dim: #4c2d8f;
+  --accent-purple-glow: rgba(179, 155, 250, 0.25);
+  --accent-coral: #ff8a75;
+  --accent-coral-dim: #7c2d12;
+  --accent-coral-glow: rgba(255, 138, 117, 0.25);
+
+  --success: #6fd995;
+  --error: #ff8383;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -5,30 +31,36 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-  background: #0f1115;
-  color: #e6e8eb;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .app {
-  max-width: 760px;
+  max-width: 860px;
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 40px 20px 90px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .header h1 {
   margin: 0;
-  font-size: 28px;
+  font-family: var(--font-display), -apple-system, sans-serif;
+  font-size: 32px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  background: linear-gradient(90deg, var(--text) 0%, var(--accent-teal) 140%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
-  margin: 4px 0 0;
-  color: #9098a4;
-  font-size: 14px;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  letter-spacing: -0.005em;
 }
 
 .ingest-form,
@@ -39,16 +71,16 @@ body {
 
 input[type="text"] {
   flex: 1;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #2a2d35;
-  background: #171a20;
-  color: #e6e8eb;
+  padding: 11px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
   font-size: 14px;
 }
 
 input[type="text"]:focus {
-  outline: 2px solid #4f7cff;
+  outline: 2px solid var(--accent-teal);
   outline-offset: -1px;
 }
 
@@ -57,160 +89,260 @@ input[type="text"]:disabled {
 }
 
 button {
-  padding: 10px 18px;
-  border-radius: 8px;
+  padding: 11px 20px;
+  border-radius: 9px;
   border: none;
-  background: #4f7cff;
-  color: white;
+  background: var(--accent-teal-dim);
+  color: #eafffb;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.15s ease;
 }
 
 button:disabled {
-  background: #2a2d35;
-  color: #6b7280;
+  background: var(--border-strong);
+  color: var(--text-dim);
   cursor: not-allowed;
 }
 
 button:not(:disabled):hover {
-  background: #3d68e8;
+  background: var(--accent-teal);
+  color: #06231f;
 }
 
 .status {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 11px 14px;
+  border-radius: 9px;
   font-size: 13px;
 }
 
 .status-loading {
-  background: #1c2333;
-  color: #8ab4ff;
+  background: #16211f;
+  color: var(--accent-teal);
 }
 
 .status-success {
   background: #16261c;
-  color: #6fd995;
+  color: var(--success);
 }
 
 .status-error {
   background: #2b1818;
-  color: #ff8383;
+  color: var(--error);
 }
 
-/* The token-savings panel is the project's headline demo number --
-   deliberately the most visually weighted element on the page. */
+/* Compression is the "coral" concept in the accent system -- the card's
+   whole identity (label, bar, arrow) leans coral, replacing the old blue. */
 .token-panel {
-  background: linear-gradient(135deg, #1a2a4a, #0f1115);
-  border: 1px solid #2f4a8a;
+  background: linear-gradient(135deg, #2a1712, var(--bg));
+  border: 1px solid var(--accent-coral-dim);
   border-radius: 14px;
   padding: 20px 24px;
   text-align: center;
 }
 
 .token-panel-label {
+  font-family: var(--font-display), -apple-system, sans-serif;
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #8ab4ff;
-  margin-bottom: 6px;
+  letter-spacing: 0.09em;
+  color: var(--accent-coral);
+  margin-bottom: 10px;
+}
+
+.token-panel-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.token-panel-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-coral-dim), var(--accent-coral));
+  transition: width 900ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .token-panel-number {
-  font-size: 36px;
+  font-size: 34px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 
+.token-panel-arrow {
+  color: var(--accent-coral);
+}
+
 .token-panel-unit {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 500;
-  color: #9098a4;
+  color: var(--text-muted);
 }
 
 .token-panel-reduction {
-  margin-top: 4px;
+  margin-top: 6px;
   font-size: 15px;
   font-weight: 600;
-  color: #6fd995;
+  color: var(--success);
 }
 
 .chat {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-height: 60px;
 }
 
 .message {
-  padding: 12px 14px;
-  border-radius: 10px;
+  padding: 14px 16px;
+  border-radius: 11px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .message-user {
-  background: #1c2333;
+  background: #1a1e2b;
   align-self: flex-end;
   max-width: 85%;
   margin-left: auto;
 }
 
 .message-assistant {
-  background: #171a20;
-  border: 1px solid #22262e;
+  background: var(--panel);
+  border: 1px solid var(--border);
 }
 
 .message-pending {
-  color: #9098a4;
+  color: var(--text-muted);
   font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .message-role {
+  font-family: var(--font-display), -apple-system, sans-serif;
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #6b7280;
-  margin-bottom: 4px;
+  letter-spacing: 0.07em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
 }
 
 .message-content {
   white-space: pre-wrap;
 }
 
+/* Citations are "semantic" in the accent system -- specific meaning-matched
+   excerpts the answer grounds itself in. */
 .citations {
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
 .citation-pill {
-  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-family: var(--font-mono), ui-monospace, "SF Mono", Consolas, monospace;
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 4px 9px;
   border-radius: 999px;
-  background: #1c2333;
-  color: #8ab4ff;
-  border: 1px solid #2f4a8a;
+  background: #241c38;
+  color: var(--accent-purple);
+  border: 1px solid var(--accent-purple-dim);
 }
 
+/* The graph panel is the hardest-verified, most differentiated feature --
+   deliberately given the most visual weight on the page: tall, glowing
+   teal border, a labeled header chip floating over the canvas. */
 .graph-viz {
-  margin-top: 12px;
-  height: 280px;
-  border-radius: 8px;
-  border: 1px solid #22262e;
-  background: #0f1115;
+  position: relative;
+  margin-top: 14px;
+  height: 460px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-teal-dim);
+  background: var(--bg);
   overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.06),
+    0 12px 40px rgba(45, 212, 191, 0.1);
+}
+
+.graph-viz-label {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 5;
+  font-family: var(--font-display), -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-teal);
+  background: rgba(15, 17, 21, 0.75);
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-teal-dim);
+  pointer-events: none;
 }
 
 .graph-viz-empty {
   margin-top: 12px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-dim);
   font-style: italic;
+}
+
+/* Hover-only ripple glow on graph nodes -- base colors stay inline in
+   GraphVisualization.tsx so they reliably beat @xyflow's own default node
+   stylesheet; box-shadow is never set inline, so this is free to animate. */
+.rf-node {
+  transition: box-shadow 0.2s ease;
+}
+
+.rf-node:hover {
+  box-shadow: 0 0 0 5px var(--accent-teal-glow);
+}
+
+/* Small concentric-ring "ripple" motif for the loading state. */
+.ripple-loader {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ripple-loader span {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent-teal);
+  opacity: 0;
+  animation: ripple-expand 1.8s ease-out infinite;
+}
+
+.ripple-loader span:nth-child(2) {
+  animation-delay: 0.6s;
+}
+
+.ripple-loader span:nth-child(3) {
+  animation-delay: 1.2s;
+}
+
+@keyframes ripple-expand {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
 }

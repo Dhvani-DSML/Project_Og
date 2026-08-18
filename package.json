@@ -1,7 +1,7 @@
 {
-  "name": "graphrag",
+  "name": "ripple",
   "version": "1.0.0",
-  "description": "GraphRAG engine for codebase question answering",
+  "description": "Ripple — multi-hop code intelligence agent for codebase question answering",
   "type": "module",
   "scripts": {
     "dev": "next dev",
