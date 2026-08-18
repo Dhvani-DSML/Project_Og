@@ -6,11 +6,12 @@ import type { TaskType } from "../state";
 
 async function run(repoKey: string, query: string, hint: string | null, taskType: TaskType) {
   console.log(`\n=== repoKey=${repoKey}  query="${query}" ===`);
-  const [graphResults, vectorResults] = await Promise.all([
+  const [graphWalk, vectorResults] = await Promise.all([
     traverseGraph(repoKey, hint),
     retrieveByVector(repoKey, query),
   ]);
-  console.log(`graphResults: ${graphResults.length}, vectorResults: ${vectorResults.length}`);
+  const graphResults = graphWalk.results;
+  console.log(`graphResults: ${graphResults.length}, edges: ${graphWalk.edges.length}, vectorResults: ${vectorResults.length}`);
 
   const { compressedContext, tokenStats } = await compressContext(repoKey, graphResults, vectorResults);
   console.log(`compressedContext: ${compressedContext.length} chunks (${compressedContext.filter((c) => c.verbatim).length} verbatim, ${compressedContext.filter((c) => !c.verbatim).length} summarized)`);

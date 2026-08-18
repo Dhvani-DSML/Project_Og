@@ -8,15 +8,17 @@ async function main() {
 
   console.log("\n--- traverseGraph: 'loadConfig' (expect blast radius upstream: connectDB, ConnectionPool.open, startServer, bootstrap) ---");
   const walk = await traverseGraph(result.repoKey, "loadConfig");
-  for (const w of walk) console.log(`  [${w.direction} hop=${w.hops}] ${w.nodeId}`);
+  for (const w of walk.results) console.log(`  [${w.direction} hop=${w.hops}] ${w.nodeId}`);
+  console.log(`  edges: ${walk.edges.map((e) => `${e.source} -> ${e.target}`).join(", ")}`);
 
   console.log("\n--- traverseGraph: 'startServer' (expect forward: connectDB, loadConfig, validateConfig) ---");
   const walk2 = await traverseGraph(result.repoKey, "startServer");
-  for (const w of walk2) console.log(`  [${w.direction} hop=${w.hops}] ${w.nodeId}`);
+  for (const w of walk2.results) console.log(`  [${w.direction} hop=${w.hops}] ${w.nodeId}`);
+  console.log(`  edges: ${walk2.edges.map((e) => `${e.source} -> ${e.target}`).join(", ")}`);
 
   console.log("\n--- traverseGraph: nonexistent symbol (expect empty) ---");
   const walk3 = await traverseGraph(result.repoKey, "totallyMadeUpSymbolXYZ");
-  console.log(`  ${walk3.length} results`);
+  console.log(`  ${walk3.results.length} results, ${walk3.edges.length} edges`);
 
   console.log("\n--- shortestPath: bootstrap -> loadConfig ---");
   const path = await shortestPath(result.repoKey, "bootstrap", "loadConfig");

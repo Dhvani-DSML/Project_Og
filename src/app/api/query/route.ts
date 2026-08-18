@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
       answer: result.answer,
       citations: result.citations,
       walkedNodes: result.walkedNodes,
+      walkedEdges: result.walkedEdges,
       tokenStats: result.tokenStats,
       taskType: result.taskType,
     });

@@ -13,8 +13,8 @@ const builder = new StateGraph(AgentStateAnnotation)
     return { taskType, targetSymbolHint };
   })
   .addNode("graphTraversal", async (state: AgentState) => {
-    const graphResults = await traverseGraph(state.repoKey, state.targetSymbolHint, state.hopDepth);
-    return { graphResults, walkedNodes: graphResults.map((r) => r.nodeId) };
+    const { results, edges } = await traverseGraph(state.repoKey, state.targetSymbolHint, state.hopDepth);
+    return { graphResults: results, walkedNodes: results.map((r) => r.nodeId), walkedEdges: edges };
   })
   .addNode("vectorRetrieval", async (state: AgentState) => {
     const vectorResults = await retrieveByVector(state.repoKey, state.query);

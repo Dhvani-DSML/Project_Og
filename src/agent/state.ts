@@ -11,6 +11,11 @@ export type GraphWalkResult = {
   direction: "forward" | "reverse"; // forward = transitively calls; reverse = blast radius (calls it)
 };
 
+// Real caller -> callee edges as actually traversed during the walk (not an
+// induced subgraph reconstructed from which nodes ended up visited) --
+// what Phase 5's graph visualization draws.
+export type WalkedEdge = { source: string; target: string };
+
 export type CompressedChunk = {
   id: string;
   file: string;
@@ -80,6 +85,27 @@ export const AgentStateAnnotation = Annotation.Root({
   // exactly the field Phase 5's graph visualization depends on being real.
   walkedNodes: Annotation<string[]>({
     reducer: (left: string[], right: string[]) => [...new Set([...left, ...right])],
+    default: () => [],
+  }),
+
+  // Same accumulate-and-dedup shape as walkedNodes, for the same reason
+  // (fan-out/fallback-loop can have graphTraversal contribute more than
+  // once in a single run) -- what Phase 5's graph visualization draws.
+  // vectorRetrieval never contributes edges: semantic results aren't
+  // graph-connected to each other by construction.
+  walkedEdges: Annotation<WalkedEdge[]>({
+    reducer: (left: WalkedEdge[], right: WalkedEdge[]) => {
+      const seen = new Set(left.map((e) => `${e.source}->${e.target}`));
+      const merged = [...left];
+      for (const e of right) {
+        const key = `${e.source}->${e.target}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(e);
+        }
+      }
+      return merged;
+    },
     default: () => [],
   }),
 });

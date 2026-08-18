@@ -1,6 +1,6 @@
 import Graph from "graphology";
 import { loadGraph } from "../../parser/graph-store";
-import type { GraphWalkResult } from "../state";
+import type { GraphWalkResult, WalkedEdge } from "../state";
 import type { SymbolNode } from "../../parser/extract";
 
 const DEFAULT_HOP_DEPTH = 2;
@@ -33,8 +33,23 @@ function findAnchors(graph: Graph, hint: string): string[] {
   return substring;
 }
 
-function bfs(graph: Graph, anchors: string[], direction: "forward" | "reverse", hopDepth: number): GraphWalkResult[] {
+/**
+ * Records edges as they're actually traversed, not reconstructed afterward
+ * from which nodes ended up in the visited set (an "induced subgraph" over
+ * walkedNodes could include edges between two visited nodes that the walk
+ * itself never crossed). Direction is normalized to the real call direction
+ * (caller -> callee) regardless of which BFS direction found it, so
+ * Phase 5's visualization can draw one consistent arrow direction.
+ */
+function bfs(
+  graph: Graph,
+  anchors: string[],
+  direction: "forward" | "reverse",
+  hopDepth: number
+): { results: GraphWalkResult[]; edges: WalkedEdge[] } {
   const visited = new Map<string, number>();
+  const edges: WalkedEdge[] = [];
+  const edgeSeen = new Set<string>();
   for (const a of anchors) visited.set(a, 0);
   let frontier = anchors;
 
@@ -45,6 +60,12 @@ function bfs(graph: Graph, anchors: string[], direction: "forward" | "reverse", 
       if (direction === "forward") graph.forEachOutNeighbor(nodeId, (n) => neighbors.push(n));
       else graph.forEachInNeighbor(nodeId, (n) => neighbors.push(n));
       for (const n of neighbors) {
+        const edge = direction === "forward" ? { source: nodeId, target: n } : { source: n, target: nodeId };
+        const edgeKey = `${edge.source}->${edge.target}`;
+        if (!edgeSeen.has(edgeKey)) {
+          edgeSeen.add(edgeKey);
+          edges.push(edge);
+        }
         if (!visited.has(n)) {
           visited.set(n, hop);
           next.push(n);
@@ -58,7 +79,7 @@ function bfs(graph: Graph, anchors: string[], direction: "forward" | "reverse", 
   for (const [nodeId, hops] of visited) {
     results.push({ nodeId, symbol: graph.getNodeAttributes(nodeId) as SymbolNode, hops, direction });
   }
-  return results;
+  return { results, edges };
 }
 
 /**
@@ -73,18 +94,28 @@ export async function traverseGraph(
   repoKey: string,
   targetSymbolHint: string | null,
   hopDepth: number = DEFAULT_HOP_DEPTH
-): Promise<GraphWalkResult[]> {
-  if (!targetSymbolHint) return [];
+): Promise<{ results: GraphWalkResult[]; edges: WalkedEdge[] }> {
+  if (!targetSymbolHint) return { results: [], edges: [] };
   const build = await loadGraph(repoKey);
-  if (!build) return [];
+  if (!build) return { results: [], edges: [] };
 
   const anchors = findAnchors(build.graph, targetSymbolHint);
-  if (anchors.length === 0) return [];
+  if (anchors.length === 0) return { results: [], edges: [] };
 
-  return [
-    ...bfs(build.graph, anchors, "forward", hopDepth),
-    ...bfs(build.graph, anchors, "reverse", hopDepth),
-  ];
+  const forward = bfs(build.graph, anchors, "forward", hopDepth);
+  const reverse = bfs(build.graph, anchors, "reverse", hopDepth);
+
+  const edgeSeen = new Set<string>();
+  const edges: WalkedEdge[] = [];
+  for (const e of [...forward.edges, ...reverse.edges]) {
+    const key = `${e.source}->${e.target}`;
+    if (!edgeSeen.has(key)) {
+      edgeSeen.add(key);
+      edges.push(e);
+    }
+  }
+
+  return { results: [...forward.results, ...reverse.results], edges };
 }
 
 /**

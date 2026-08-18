@@ -8,6 +8,7 @@ async function run(repoKey: string, query: string) {
   console.log(`fallbackAttempted: ${result.fallbackAttempted}  hopDepth: ${result.hopDepth}`);
   console.log(`graphResults: ${result.graphResults.length}  vectorResults: ${result.vectorResults.length}`);
   console.log(`walkedNodes (${result.walkedNodes.length}): ${JSON.stringify(result.walkedNodes)}`);
+  console.log(`walkedEdges (${result.walkedEdges.length}): ${result.walkedEdges.map((e: any) => `${e.source} -> ${e.target}`).join(", ")}`);
   console.log(`tokenStats:`, result.tokenStats);
   console.log(`citations: ${JSON.stringify(result.citations.map((c: any) => c.symbolId))}`);
   console.log(`\nAnswer:\n${result.answer}`);
