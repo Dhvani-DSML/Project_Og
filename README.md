@@ -302,6 +302,55 @@ hypothesis once the test-call noise is separated out. Both numbers are
 real and both are reported here; the raw 12% isn't wrong, it's just
 dominated by something other than what it looks like it's measuring.
 
+**A fifth repo, decorator-heavy this time:**
+[typestack/class-transformer](https://github.com/typestack/class-transformer)
+(`class-validator`'s companion library — `plainToInstance`/`instanceToPlain`
+and friends). 71 files, 81 symbols, 209 calls, 23 resolved — **11%**, the
+lowest of the five repos tested, verified directly against the stored graph
+(not taken on faith): `{files: 71, symbols: 81, totalCalls: 209,
+resolvedCalls: 23, resolutionRate: '11%'}`.
+
+Two things confirmed, not assumed:
+- **Real decorator usage extracting correctly, for the first time with
+  genuine (not synthetic) evidence.** The Phase 3 gap analysis found
+  decorators didn't break `class_declaration` parsing, but only via a
+  hand-written snippet — neither `class-validator` nor `class-transformer`'s
+  own *source* actually uses decorators. `ingest.ts` includes test files by
+  design, though, and class-transformer's own test fixtures
+  (`test/functional/*.spec.ts`) genuinely decorate example classes with
+  `@Expose`, `@Type`, etc. — confirmed via GitHub code search (13 real
+  matches) before writing this down, not inferred from the resolution
+  number alone.
+- **The `plainToInstance` query was semantic-only, not graph-backed** —
+  checked via the raw `/api/query` response rather than assumed from the
+  UI: `taskType: "semantic"`, all 8 `walkedNodes` came from vector
+  retrieval (`plainToInstance`, `plainToClass`, `instanceToInstance`, and
+  related transform methods ranked by similarity), zero graph traversal.
+  Makes sense in hindsight — "what does X do" reads as an explain-style
+  question to `router.ts`, not a relationship/impact one — but worth
+  confirming rather than assuming graph-backing just because the repo
+  has a real call graph.
+
+**The five-repo resolution-rate spectrum, in one place** (each tested via
+`extractFile`/`buildGraph` or the full `ingest()` pipeline, several through
+the real running app, not just the CLI — see each repo's own entry above
+for the full story):
+
+| Repo | Resolution rate | Why |
+|---|---|---|
+| `sample-repo` (3-file toy) | **83%** | Hand-written, small, every call is local — closest thing to a ceiling for this heuristic resolver. |
+| `class-validator` (80-file sample) | **69%** | Real repo, but a barrel/re-export-heavy library where most calls stay internal to the package. |
+| `immerjs/immer` (19 non-test source files) | **33%** | Internal algorithmic logic (structural sharing), not external-API glue — but still real generics/TS-only code capping the ceiling well below sample-repo's. |
+| `sindresorhus/ky` (53 files) | **21%** | External-API-heavy by nature (DOM/fetch: `Headers`, `AbortController`, `Response` — all external, unresolvable by construction). |
+| `typestack/class-transformer` (71 files) | **11%** | Metadata-reflection-driven (`reflect-metadata`, decorator introspection at runtime) rather than direct function calls — the *mechanism* connecting code paths often isn't a literal call expression at all, so there's less for a call-graph resolver to find in the first place, not just more external noise to filter out. |
+
+Read together, not in isolation: resolution rate isn't a quality score for
+the resolver, it's a reflection of how much of a given repo's *real*
+control flow is expressed as direct, literal function calls the heuristic
+can see — vs. calls into externals, reflection/metadata mechanisms, or
+generics-heavy code the project was always explicit about not solving.
+sample-repo's 83% was never the bar real repos were expected to clear.
+
 ---
 
 ## Answer node: group blast-radius answers by file
