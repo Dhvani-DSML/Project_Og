@@ -943,10 +943,68 @@ graphrag/
       error message calls out, not a bug in this code.
 
 ### Phase 5 — graph visualization
-- [ ] Render `walkedNodes` + their edges as a small subgraph (react-flow),
-      highlighting the path the agent actually traversed for the current
-      answer. This is the highest-leverage polish item — it visually proves
-      "full codebase awareness" in a way a paragraph of text cannot.
+- [x] Render `walkedNodes` + their edges as a small subgraph (`@xyflow/react`,
+      the maintained successor to `react-flow`), highlighting the path the
+      agent actually traversed for the current answer.
+
+      **Backend groundwork first, since `walkedNodes` alone was never
+      enough**: a flat node list has no edges to draw. `graph-traversal.ts`'s
+      BFS now records the real caller → callee edge as each one is actually
+      crossed during the walk (normalized to true call direction regardless
+      of which BFS direction found it) rather than reconstructing an
+      "induced subgraph" from which nodes ended up visited afterward — the
+      latter could include edges the walk itself never crossed, which isn't
+      "the path actually traversed." `traverseGraph` now returns
+      `{ results, edges }`; `state.ts` gained `walkedEdges` alongside
+      `walkedNodes` with the same accumulate-and-dedup reducer (fan-out/
+      fallback-loop can have `graphTraversal` contribute more than once per
+      run); `/api/query` returns it. `vectorRetrieval` never contributes
+      edges — semantic results aren't graph-connected to each other by
+      construction, which is also why the UI only renders the graph panel
+      when `walkedEdges.length > 0`: a "graph" of floating disconnected dots
+      for a pure semantic answer wouldn't demonstrate anything.
+
+      `GraphVisualization.tsx`: a hand-rolled BFS-layer layout (roots with
+      no incoming walked edge in column 0, everything else one column past
+      its furthest predecessor) rather than pulling in a full layout engine
+      (dagre/elkjs) for what the README's own phrasing already calls a
+      "small subgraph." The anchor node (matched from `targetSymbolHint`
+      against each node's bare name) is highlighted distinctly. Self-loops
+      (confirmed real, not a bug — `deepMergeInternal` genuinely calls
+      itself recursively in `ky`'s source, see the walked-edges commit) are
+      excluded from the layout's column computation but still rendered as
+      actual edges, not filtered out — the graph should show what's real.
+
+      **A real debugging story worth recording, not just the working
+      result**: testing showed 5 nodes rendering correctly but consistently
+      zero edge `<path>` elements in the DOM — no errors, `onError` never
+      fired, data verified correct at every layer (a temporary `onError`
+      handler and a `window` debug hook confirmed the exact same 5 valid
+      edges reaching `<ReactFlow>` every time). Ruled out, in order: the
+      self-loop specifically (filtered it out, still zero), edge id
+      characters (`/`, `:`, `->` — simplified to bare indices, still zero),
+      missing node `width`/`height` for @xyflow's internal measurement pass
+      (added explicit values, still zero), passing arrays as raw props vs.
+      the library's own documented `useNodesState`/`useEdgesState` pattern
+      (switched, still zero), a genuine compile error from that same edit
+      (real, but separate — fixed, still zero afterward), Turbopack-specific
+      bundling (reproduced identically under `next dev --webpack`), and
+      `overflow: hidden`-driven stacking-context clipping, a real
+      documented `@xyflow/react`/Next.js gotcha (confirmed present on
+      `.react-flow`'s own default CSS, overrode it live, still zero).
+      The actual answer: **the official `@xyflow/react` demo site, live on
+      xyflow's own infrastructure, showed the identical symptom** in this
+      same browser session on the first check, and then rendered correctly
+      on a second check moments later — a rendering-completion delay in
+      this environment exceeding what a same-tick (or even a 20+ second
+      polled) DOM query was catching, not a bug in the data, the component,
+      the bundler, or the library. A screenshot (which forces an actual
+      paint) confirmed all 5 nodes, all edges including the self-loop, and
+      correct anchor highlighting, at the exact moment a `document.
+      querySelectorAll` in the same page returned zero. Re-verified through
+      the real app afterward with a generous wait: same correct 5-node
+      graph, same anchor highlighting, and confirmed a semantic-only
+      question (no `walkedEdges`) correctly renders no graph panel at all.
 
 ### Phase 6 — deploy + submission polish
 - [ ] Deploy to Vercel, verify cold-start behavior of the WASM parser and the

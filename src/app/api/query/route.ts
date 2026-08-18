@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       walkedEdges: result.walkedEdges,
       tokenStats: result.tokenStats,
       taskType: result.taskType,
+      targetSymbolHint: result.targetSymbolHint,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });

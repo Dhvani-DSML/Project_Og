@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import GraphVisualization from "./GraphVisualization";
 
 type IngestStats = {
   files: number;
@@ -23,11 +24,16 @@ type Citation = {
   endLine: number;
 };
 
+type WalkedEdge = { source: string; target: string };
+
 type Message = {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
   taskType?: string;
+  walkedNodes?: string[];
+  walkedEdges?: WalkedEdge[];
+  targetSymbolHint?: string | null;
 };
 
 export default function ChatPanel() {
@@ -87,7 +93,15 @@ export default function ChatPanel() {
       if (!res.ok) throw new Error(data.error ?? "Query failed.");
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.answer, citations: data.citations, taskType: data.taskType },
+        {
+          role: "assistant",
+          content: data.answer,
+          citations: data.citations,
+          taskType: data.taskType,
+          walkedNodes: data.walkedNodes,
+          walkedEdges: data.walkedEdges,
+          targetSymbolHint: data.targetSymbolHint,
+        },
       ]);
       setLastTokenStats(data.tokenStats);
     } catch (err: any) {
@@ -158,6 +172,17 @@ export default function ChatPanel() {
                   </span>
                 ))}
               </div>
+            )}
+            {/* Only worth rendering when there's an actual traversed path to
+                show -- a pure semantic answer's walkedNodes are disconnected
+                vector matches, not a graph, so a "graph" of floating dots
+                wouldn't demonstrate anything. */}
+            {m.walkedEdges && m.walkedEdges.length > 0 && (
+              <GraphVisualization
+                walkedNodes={m.walkedNodes ?? []}
+                walkedEdges={m.walkedEdges}
+                targetSymbolHint={m.targetSymbolHint ?? null}
+              />
             )}
           </div>
         ))}
