@@ -17,11 +17,32 @@ import "@xyflow/react/dist/style.css";
 
 type WalkedEdge = { source: string; target: string };
 
+type NodeDetail = { file: string; startLine: number; endLine: number };
+
+type RepoSource =
+  | { kind: "local"; dir: string }
+  | { kind: "github"; owner: string; repo: string; ref?: string };
+
 type Props = {
   walkedNodes: string[];
   walkedEdges: WalkedEdge[];
   targetSymbolHint: string | null;
+  nodeDetails: Record<string, NodeDetail>;
+  repoSource: RepoSource | null;
 };
+
+/**
+ * GitHub-only by construction: local-directory ingestion has no browsable
+ * URL to link to, and a github source's ref is always a resolved branch/SHA
+ * by the time it's persisted (see ingest.ts), never the unresolved-optional
+ * shape the type still technically allows -- the `ref` check below is a
+ * defensive fallback, not the expected path.
+ */
+function githubUrlFor(source: RepoSource | null, detail: NodeDetail | undefined): string | null {
+  if (!source || source.kind !== "github" || !detail) return null;
+  const ref = source.ref ?? "main";
+  return `https://github.com/${source.owner}/${source.repo}/blob/${ref}/${detail.file}#L${detail.startLine}-L${detail.endLine}`;
+}
 
 const COLUMN_WIDTH = 220;
 const ROW_HEIGHT = 70;
@@ -113,7 +134,13 @@ function computeLayout(nodeIds: string[], edges: WalkedEdge[]): Map<string, { x:
   return positions;
 }
 
-function GraphVisualizationInner({ walkedNodes, walkedEdges, targetSymbolHint }: Props) {
+function GraphVisualizationInner({
+  walkedNodes,
+  walkedEdges,
+  targetSymbolHint,
+  nodeDetails,
+  repoSource,
+}: Props) {
   const computed = useMemo(() => {
     if (walkedNodes.length === 0) return { nodes: [], edges: [] };
 
@@ -124,6 +151,7 @@ function GraphVisualizationInner({ walkedNodes, walkedEdges, targetSymbolHint }:
       const { file, name } = parseId(id);
       const isAnchor = hintLower !== undefined && hintLower !== null && name.toLowerCase().endsWith(hintLower);
       const pos = positions.get(id) ?? { x: 0, y: 0 };
+      const isLinkable = githubUrlFor(repoSource, nodeDetails[id]) !== null;
       return {
         id,
         position: pos,
@@ -162,6 +190,7 @@ function GraphVisualizationInner({ walkedNodes, walkedEdges, targetSymbolHint }:
           width: NODE_WIDTH,
           height: NODE_HEIGHT,
           textAlign: "left" as const,
+          cursor: isLinkable ? "pointer" : "default",
         },
       };
     });
@@ -179,7 +208,7 @@ function GraphVisualizationInner({ walkedNodes, walkedEdges, targetSymbolHint }:
     }));
 
     return { nodes, edges };
-  }, [walkedNodes, walkedEdges, targetSymbolHint]);
+  }, [walkedNodes, walkedEdges, targetSymbolHint, nodeDetails, repoSource]);
 
   // Controlled state via useNodesState/useEdgesState (the library's own
   // documented pattern) rather than passing computed arrays straight
@@ -261,6 +290,15 @@ function GraphVisualizationInner({ walkedNodes, walkedEdges, targetSymbolHint }:
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
         onError={(code, message) => console.error(`[ReactFlow ${code}]`, message)}
+        onNodeClick={(_event, node) => {
+          // Local-directory ingestion has no browsable URL and older
+          // repos ingested before this feature shipped have no persisted
+          // source/nodeDetails at all -- githubUrlFor returns null for
+          // either case, so the click is a silent no-op rather than an
+          // error, matching every node's own cursor styling above.
+          const url = githubUrlFor(repoSource, nodeDetails[node.id]);
+          if (url) window.open(url, "_blank", "noopener,noreferrer");
+        }}
       >
         <Background color="#22262e" gap={16} />
         <Controls showInteractive={false} />

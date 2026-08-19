@@ -27,6 +27,12 @@ type Citation = {
 
 type WalkedEdge = { source: string; target: string };
 
+type NodeDetail = { file: string; startLine: number; endLine: number };
+
+type RepoSource =
+  | { kind: "local"; dir: string }
+  | { kind: "github"; owner: string; repo: string; ref?: string };
+
 type Message = {
   role: "user" | "assistant";
   content: string;
@@ -35,6 +41,8 @@ type Message = {
   walkedNodes?: string[];
   walkedEdges?: WalkedEdge[];
   targetSymbolHint?: string | null;
+  nodeDetails?: Record<string, NodeDetail>;
+  repoSource?: RepoSource | null;
 };
 
 export default function ChatPanel() {
@@ -102,6 +110,8 @@ export default function ChatPanel() {
           walkedNodes: data.walkedNodes,
           walkedEdges: data.walkedEdges,
           targetSymbolHint: data.targetSymbolHint,
+          nodeDetails: data.nodeDetails,
+          repoSource: data.repoSource,
         },
       ]);
       setLastTokenStats(data.tokenStats);
@@ -176,6 +186,8 @@ export default function ChatPanel() {
                 walkedNodes={m.walkedNodes ?? []}
                 walkedEdges={m.walkedEdges}
                 targetSymbolHint={m.targetSymbolHint ?? null}
+                nodeDetails={m.nodeDetails ?? {}}
+                repoSource={m.repoSource ?? null}
               />
             )}
           </div>

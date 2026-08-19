@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { Redis } from "@upstash/redis";
 import Graph from "graphology";
 import type { BuildResult } from "./graph";
+import type { IngestSource } from "./ingest";
 
 try {
   // Local dev convenience -- on Vercel these are injected directly into
@@ -25,6 +26,13 @@ type StoredGraph = {
   repoKey: string;
   stats: BuildResult["stats"];
   graphExport: ReturnType<Graph["export"]>;
+  // Owner/repo/ref (or local dir) the graph was built from -- added so query
+  // time can reconstruct a GitHub deep link (owner/repo/ref/file#Lstart-Lend)
+  // for each walked node without re-deriving it from repoKey's string
+  // encoding. Optional: graphs persisted before this field existed won't
+  // have it, and loadGraph below degrades that to `null` rather than
+  // throwing on old data.
+  source?: IngestSource;
 };
 
 /**
@@ -34,7 +42,11 @@ type StoredGraph = {
  * No-ops with a warning, rather than throwing, when Upstash credentials
  * aren't configured — ingestion should still work end-to-end without them.
  */
-export async function persistGraph(repoKey: string, build: BuildResult): Promise<boolean> {
+export async function persistGraph(
+  repoKey: string,
+  build: BuildResult,
+  source: IngestSource
+): Promise<boolean> {
   const client = redisClient();
   if (!client) {
     console.warn(
@@ -42,12 +54,14 @@ export async function persistGraph(repoKey: string, build: BuildResult): Promise
     );
     return false;
   }
-  const payload: StoredGraph = { repoKey, stats: build.stats, graphExport: build.graph.export() };
+  const payload: StoredGraph = { repoKey, stats: build.stats, graphExport: build.graph.export(), source };
   await client.set(redisKeyFor(repoKey), JSON.stringify(payload));
   return true;
 }
 
-export async function loadGraph(repoKey: string): Promise<BuildResult | null> {
+export async function loadGraph(
+  repoKey: string
+): Promise<(BuildResult & { source: IngestSource | null }) | null> {
   const client = redisClient();
   if (!client) return null;
   const raw = await client.get<string | StoredGraph>(redisKeyFor(repoKey));
@@ -57,5 +71,5 @@ export async function loadGraph(repoKey: string): Promise<BuildResult | null> {
   const stored: StoredGraph = typeof raw === "string" ? JSON.parse(raw) : raw;
   const graph = new Graph({ multi: true, type: "directed" });
   graph.import(stored.graphExport);
-  return { graph, stats: stored.stats };
+  return { graph, stats: stored.stats, source: stored.source ?? null };
 }

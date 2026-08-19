@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agentGraph } from "../../../agent/graph";
+import { loadGraph } from "../../../parser/graph-store";
+import type { SymbolNode } from "../../../parser/extract";
+import type { IngestSource } from "../../../parser/ingest";
 
 // Node.js runtime, not Edge -- vector-retrieval.ts embeds the query via the
 // same fs-backed local model embed.ts loads for ingestion.
@@ -36,6 +39,28 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await agentGraph.invoke({ query: question, repoKey });
+
+    // Enriches walked nodes with file/line data and the repo's GitHub
+    // owner/repo/ref, so the graph panel can deep-link a clicked node to its
+    // exact lines on GitHub. A second, read-only lookup against the same
+    // persisted graph, entirely separate from the agent's own internal
+    // traversal state (walkedNodes there is just id strings) -- doesn't
+    // touch agent state, graph-traversal.ts, or agent/graph.ts at all.
+    let nodeDetails: Record<string, { file: string; startLine: number; endLine: number }> = {};
+    let repoSource: IngestSource | null = null;
+    if (result.walkedNodes.length > 0) {
+      const build = await loadGraph(repoKey);
+      if (build) {
+        repoSource = build.source;
+        for (const id of result.walkedNodes) {
+          if (build.graph.hasNode(id)) {
+            const attrs = build.graph.getNodeAttributes(id) as SymbolNode;
+            nodeDetails[id] = { file: attrs.file, startLine: attrs.startLine, endLine: attrs.endLine };
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       answer: result.answer,
       citations: result.citations,
@@ -44,6 +69,8 @@ export async function POST(req: NextRequest) {
       tokenStats: result.tokenStats,
       taskType: result.taskType,
       targetSymbolHint: result.targetSymbolHint,
+      nodeDetails,
+      repoSource,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? String(e) }, { status: 500 });

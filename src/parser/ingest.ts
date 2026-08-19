@@ -281,7 +281,7 @@ export async function ingest(input: string): Promise<IngestResult> {
 
   const build = buildGraph(fileGraphs);
   const repoKey = repoKeyFor(resolvedSource);
-  const persisted = await persistGraph(repoKey, build);
+  const persisted = await persistGraph(repoKey, build, resolvedSource);
 
   const chunks = chunkSymbols(fileGraphs, sources);
   const embedded = await embedChunks(chunks);
