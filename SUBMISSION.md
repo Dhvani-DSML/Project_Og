@@ -283,6 +283,26 @@ route's own time budget was too tight for a realistic worst case. Raised `maxDur
 to 290 seconds, just under Vercel Hobby's actual 300-second ceiling, giving a
 realistic retry sequence room to actually complete instead of being killed mid-wait.
 
+### Closing a gap identified while writing this document
+
+Writing the product-strategy section below surfaced a real, immediately fixable gap
+rather than just a future suggestion: this tool's entire pitch rests on "the graph
+panel shows what was actually walked, not a plausible-looking guess," but there was no
+way for a user to spot-check that claim beyond trusting the label. Built the fix
+instead of leaving it as a bullet point: graph nodes are now clickable, deep-linking to
+`github.com/{owner}/{repo}/blob/{ref}/{file}#L{start}-L{end}` — landing on the exact
+cited lines on the real GitHub page. Owner/repo/ref are persisted alongside the graph
+at ingest time (a field the original schema didn't have); `/api/query` does a second,
+read-only lookup against the same persisted graph after the agent finishes to attach
+per-node file/line data to the response, entirely separate from the agent's own
+internal state — no changes to routing, traversal, or compression logic. Local-directory
+ingestion has no browsable URL, so the click degrades to a no-op rather than an error.
+
+Verified live, not just that it compiles: re-ingested `ky` fresh (existing persisted
+graphs predate the new field), ran the `mergeHeaders` blast radius, dispatched real
+pointer events on three rendered nodes, and confirmed each constructed URL landed on
+the correct file with the correct lines highlighted on the actual GitHub page.
+
 ---
 
 ## 4. Evaluation metrics used
@@ -433,17 +453,6 @@ honest 0% cases — but doesn't currently explain *why* a given query compressed
 or 50%. A one-line "nothing here needed summarizing" vs. "12 of 112 nodes kept
 verbatim, the rest summarized" distinction would turn a number into something a user
 actually trusts and understands the mechanics of, rather than a bare stat.
-
-**Trusting a "walked path" claim requires a way to verify it that isn't just belief
-— fixed.** This tool's entire pitch rests on "the graph panel shows what was actually
-walked, not a plausible-looking guess," which needed a way for a user to spot-check
-that claim beyond trusting the label. Graph nodes are now clickable: each one deep-links
-to `github.com/{owner}/{repo}/blob/{ref}/{file}#L{start}-L{end}`, landing on the exact
-cited lines on the real GitHub page. Owner/repo/ref are persisted alongside the graph
-at ingest time; local-directory ingestion (no browsable URL) degrades the click to a
-no-op rather than an error. Verified live, not just that it compiles: re-ingested `ky`,
-ran the `mergeHeaders` blast radius, clicked three real nodes, and confirmed each
-constructed URL landed on the correct file with the correct lines highlighted.
 
 ---
 
