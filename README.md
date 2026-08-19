@@ -1,21 +1,5 @@
 # Ripple — multi-hop code intelligence agent
 
-## Context for whoever (human or Claude Code) picks this up
-
-This is a take-home project with a hard deadline: **submission due August 19, 2026.**
-Today is August 17. That means roughly two focused days of work remain, and this
-document exists so an agentic coding session can pick up exactly where a human
-strategy/scaffolding session left off, without re-deriving any of the decisions
-below. Read this whole file before writing code. Where a decision was already
-made and justified, don't re-litigate it unless something below is provably wrong
-once you're in the code.
-
-**Do not start from scratch.** `src/parser/` already contains working, tested code.
-Run `npm run test:parser` first to see it succeed before changing anything in that
-directory.
-
----
-
 ## What this actually is (plain language)
 
 Every AI coding tool has to decide what slice of a codebase to show the model,
@@ -36,9 +20,17 @@ not by guessing from text similarity.
 
 ---
 
-## Current status — what's already built and verified
+## Status
 
-Located in `src/parser/`:
+Ripple is complete: parsing, embeddings, the LangGraph agent, the API layer, the
+chat UI, graph visualization, and deployment are all built, deployed live, and
+tested end-to-end against five real open-source repos, with numbers confirmed
+matching between local runs and the live deployment (see "Evaluation metrics used"
+in `SUBMISSION.md` for the compiled results, and "Build log" below for the
+phase-by-phase account of how it was built, including every bug found along the
+way).
+
+The parsing core, in `src/parser/`:
 
 - **`extract.ts`** — Uses `web-tree-sitter` (WASM, via the `tree-sitter-wasms`
   prebuilt grammar bundle — no native compilation needed) to parse a single
@@ -59,25 +51,18 @@ Located in `src/parser/`:
   Unresolved calls are dropped rather than added as dangling nodes.
 
 - **`test-parse.ts`** — Runs both of the above against `sample-repo/` (3 files,
-  a deliberate `server.ts → db.ts → config.ts` call chain) and proves two things
-  that matter for the whole pitch of this project:
-  - Multi-hop forward traversal ("what does `startServer` transitively call?")
-  - Multi-hop backward traversal / blast radius ("what breaks if `loadConfig`
-    changes?")
-  Both work correctly across 3 files. Last run: 7 symbols found, 83% of raw
+  a deliberate `server.ts → db.ts → config.ts` call chain) and proves the two
+  things the whole project is built around: multi-hop forward traversal ("what
+  does `startServer` transitively call?") and multi-hop backward traversal /
+  blast radius ("what breaks if `loadConfig` changes?"). 7 symbols, 83% of raw
   calls resolved.
 
-**Known, already-discovered limitation (keep this, don't silently "fix" it away
-without flagging it in the final write-up):** method calls through an instance
-variable (`pool.open()`) don't resolve, because that requires knowing `pool`'s
-type, which needs real type inference, not name matching. This is the documented
-boundary between "heuristic resolution" (what this project does) and
-"LSP-level semantic analysis" (what a production version would need). It's a
-selling point in the write-up, not a bug to hide.
-
-**Not yet built:** everything past parsing — embeddings/vector search, the
-LangGraph agent, the API layer, the frontend, and deployment. That's the rest
-of this document.
+**Known limitation:** method calls through an instance variable (`pool.open()`)
+don't resolve, because that requires knowing `pool`'s type, which needs real type
+inference, not name matching. This is the documented boundary between "heuristic
+resolution" (what this project does) and "LSP-level semantic analysis" (what a
+production version would need) — a scope boundary worth stating plainly, not a
+bug to hide.
 
 ---
 
@@ -230,8 +215,8 @@ have been a real risk unauthenticated.
   it broke something real:** `raw.githubusercontent.com` has its own
   unauthenticated CDN rate limit, entirely separate from the
   token-authenticated `api.github.com` core limit `GITHUB_TOKEN` covers —
-  confirmed by hitting it during this session's own exploratory `curl`s
-  against ky's source, unrelated to the app's ingest itself. Unlike Groq's
+  confirmed by hitting it during exploratory `curl`s against ky's source,
+  unrelated to the app's ingest itself. Unlike Groq's
   API (which returns an exact `x-ratelimit-reset-tokens` wait time,
   see Phase 2/3), this CDN returns a bare `429` with **no `Retry-After`
   header at all** — no way to know how long to wait. A subsequent re-ingest
@@ -401,7 +386,7 @@ testing, not just written and assumed to work:
 
 ---
 
-## Full pipeline (target architecture)
+## Full pipeline
 
 ```
                     ┌─────────────────────────────┐
@@ -409,11 +394,9 @@ testing, not just written and assumed to work:
                     │                              │
    GitHub repo URL →│  walk files → tree-sitter    │
                     │  parse → build call graph     │
-                    │  (done, see src/parser/)      │
                     │       +                       │
                     │  chunk by symbol → embed      │
                     │  → store in vector index       │
-                    │  (NOT YET BUILT)               │
                     └──────────────┬───────────────┘
                                    │ stored (Upstash Redis for graph,
                                    │ Upstash Vector for embeddings)
@@ -444,7 +427,7 @@ testing, not just written and assumed to work:
 
 ---
 
-## Tech stack (decided — don't relitigate without a strong reason)
+## Tech stack
 
 All chosen to be free/open-source-first and to deploy as a **single Vercel
 project**, avoiding a separate hosted backend.
@@ -499,10 +482,9 @@ lineup has already moved once.
 
 ## Embedding model cold-start (tested before building on it)
 
-The README previously flagged cold-start latency for `@xenova/transformers`
-running inside a Vercel serverless function as a real risk, not a
-hypothetical — this was tested in isolation, before writing any of the rest
-of Phase 2, per the working agreement not to build on unverified assumptions.
+Cold-start latency for `@xenova/transformers` running inside a Vercel serverless
+function was a real risk, not a hypothetical one — tested in isolation before
+building the rest of Phase 2 on top of it, rather than assumed away.
 
 Two scenarios, both against `Xenova/all-MiniLM-L6-v2` (quantized ONNX, the
 library's default):
@@ -554,55 +536,54 @@ defaults if unset, not required to be set explicitly.
 
 ---
 
-## Directory structure (target — extend what exists, don't restructure it)
+## Directory structure
 
 ```
 ripple/
   src/
     parser/
-      extract.ts          # done
-      graph.ts             # done
-      test-parse.ts         # done
-      ingest.ts              # done: walk a whole repo dir / fetch from GitHub, call extract.ts per file
-      graph-store.ts          # done: persistGraph/loadGraph, Upstash Redis, keyed by hash(repoKey)
+      extract.ts               # tree-sitter parse -> symbols/imports/calls for one file
+      graph.ts                  # resolves cross-file calls into a real graph
+      test-parse.ts              # regression test against sample-repo
+      ingest.ts                   # walk a local dir / fetch from GitHub, call extract.ts per file
+      graph-store.ts               # persistGraph/loadGraph, Upstash Redis, keyed by hash(repoKey)
     embeddings/
-      fetch-model.ts          # done: one-time download of bundled model weights
-      models/                  # done: bundled all-MiniLM-L6-v2 weights (22.6MB, gitted)
-      embed.ts                  # done: AST-aware chunking (reuses extract.ts line ranges) + batched embed
-      vector-store.ts          # done: Upstash Vector read/write, namespaced per repo
+      fetch-model.ts                # one-time download of bundled model weights
+      models/                        # bundled all-MiniLM-L6-v2 weights (22.6MB, gitted)
+      embed.ts                        # AST-aware chunking (reuses extract.ts line ranges) + batched embed
+      vector-store.ts                  # Upstash Vector read/write, namespaced per repo
     agent/
-      state.ts                  # NEW: LangGraph state type
+      state.ts                          # LangGraph state type
       nodes/
-        router.ts                # NEW
-        graph-traversal.ts        # NEW
-        vector-retrieval.ts       # NEW
-        compress.ts                # NEW
-        answer.ts                   # NEW
-      graph.ts                      # NEW: wires nodes into the LangGraph StateGraph
-    app/                             # Next.js App Router
-      page.tsx                       # done: renders ChatPanel
-      globals.css                     # done
+        router.ts                        # structural/semantic/both classification
+        graph-traversal.ts                # N-hop / blast-radius graph walk
+        vector-retrieval.ts                # semantic search
+        compress.ts                         # verbatim + summarized context, token stats
+        answer.ts                            # grounded answer + citations
+      graph.ts                                # wires nodes into the LangGraph StateGraph
+    app/                                       # Next.js App Router
+      page.tsx                                 # renders ChatPanel
+      globals.css
       api/
-        ingest/route.ts               # done: POST { source } -> parse + embed + store
-        query/route.ts                 # done: POST { repoKey, question } -> run agent -> answer
+        ingest/route.ts                         # POST { source } -> parse + embed + store
+        query/route.ts                           # POST { repoKey, question } -> run agent -> answer
     components/
-      ChatPanel.tsx                    # done: ingest form, chat, token-savings panel
-      GraphVisualization.tsx            # NEW -- Phase 5
-  sample-repo/                          # done, keep for regression testing
-  README.md                              # this file
+      ChatPanel.tsx                               # ingest form, chat, token-compression panel
+      GraphVisualization.tsx                        # walked-subgraph visualization
+  sample-repo/                                       # small hand-written repo, kept for regression testing
+  README.md
 ```
 
 ---
 
-## Build plan (phased — do them roughly in this order)
+## Build log
 
-### Phase 1 — whole-repo ingestion (extend, don't rewrite, the parser)
-- [x] Re-run against 2-3 *real* small-to-medium open source TS repos (not just
+### Phase 1 — whole-repo ingestion
+- Re-ran against 2-3 *real* small-to-medium open source TS repos (not just
       the 3-file sample) to catch parsing edge cases the sample repo doesn't
-      cover — done *before* `ingest.ts` itself, on request, so its fixes would
-      already be in place for real ingestion. See "Real-repo parsing gaps"
-      above.
-- [x] `ingest.ts`: given a local directory or a GitHub repo URL/`owner/repo`
+      cover — done *before* `ingest.ts` itself, so its fixes would already be
+      in place for real ingestion. See "Real-repo parsing gaps" above.
+- `ingest.ts`: given a local directory or a GitHub repo URL/`owner/repo`
       shorthand, list all `.ts`/`.tsx`/`.js`/`.jsx` files, run `extractFile`
       on each, pass all `FileGraph`s into `buildGraph`. Local directories are
       walked directly; GitHub repos use one REST API call
@@ -637,7 +618,7 @@ ripple/
       abuse rate limit (403/429 with `Retry-After`, triggered by request
       *pattern* — e.g. too many concurrent requests — not budget) from the
       primary one, since "set `GITHUB_TOKEN`" doesn't fix that kind.
-- [x] Serialize the resulting graph to Upstash Redis, keyed by a hash of the
+- Serialized the resulting graph to Upstash Redis, keyed by a hash of the
       repo URL. Lives in `src/parser/graph-store.ts` (`persistGraph` /
       `loadGraph`), called automatically at the end of `ingest()`. Redis key
       is `graphrag:graph:<sha256(repoKey)>`; value is the repoKey, stats, and
@@ -652,10 +633,10 @@ ripple/
       original build (7 nodes, 5 edges).
 
 ### Phase 2 — semantic half
-- [x] Verify `@xenova/transformers` cold-start before building on it — done
+- Verified `@xenova/transformers` cold-start before building on it — done
       first, see "Embedding model cold-start" above. Decision: bundle the
       model weights rather than switch to a hosted API.
-- [x] `embed.ts`: for each symbol node already extracted, take its source text
+- `embed.ts`: for each symbol node already extracted, take its source text
       (the actual function/class body, sliced by line range) as the chunk —
       this reuses the AST-aware boundaries from Phase 0, avoiding the
       "naive fixed-size chunking" failure mode described in the project's
@@ -692,7 +673,7 @@ ripple/
       pitch (see "What this actually is") is that relationship-walking
       catches what text similarity misses, and this is a concrete,
       measured instance of that, not a hypothetical one anymore.
-- [x] `vector-store.ts`: write embeddings to Upstash Vector with metadata
+- `vector-store.ts`: write embeddings to Upstash Vector with metadata
       (symbol id, file, line range, name, kind, exported, raw code text
       capped at 4000 chars). Namespaced per repo (hash of repoKey) so
       multiple ingested repos share one index without their nearest-neighbor
@@ -720,7 +701,7 @@ ripple/
       Phase 4's UI ever offers "ingest, then immediately ask a question."
 
 ### Phase 3 — LangGraph agent
-- [x] `state.ts`: `{ query, taskType, graphResults, vectorResults, compressedContext, tokenStats, answer, citations, walkedNodes }`
+- `state.ts`: `{ query, taskType, graphResults, vectorResults, compressedContext, tokenStats, answer, citations, walkedNodes }`
       plus two additions the original list above provably needed:
       `repoKey` (no node can know which Redis graph or Vector namespace to
       load without it — the original state type never named which repo it's
@@ -732,7 +713,7 @@ ripple/
       fan-out ("both") and fallback-loop cases both have more than one node
       contribute to it in the same run, and Phase 5's graph visualization
       depends entirely on this list being real and complete.
-- [x] `router.ts`: classify the question (structural / semantic / both) using
+- `router.ts`: classify the question (structural / semantic / both) using
       a cheap LLM call (`openai/gpt-oss-20b`) with a system prompt, plus
       extracts a best-guess target symbol name from the query for
       `graph-traversal.ts` to anchor on. **Tested standalone before wiring
@@ -744,7 +725,7 @@ ripple/
       phrases ("everything X touches", "walk me through what X uses") and
       re-run clean at 8/8. Kept as a real committed test
       (`src/agent/nodes/test-router.ts`), not thrown away after passing.
-- [x] `graph-traversal.ts`: implements all three planned modes. `traverseGraph`
+- `graph-traversal.ts`: implements all three planned modes. `traverseGraph`
       resolves `router.ts`'s target-symbol hint to actual node ids (exact ->
       case-insensitive -> substring, same escalating-heuristic shape as
       `graph.ts`'s import resolver) and walks **both** forward (transitively
@@ -764,7 +745,7 @@ ripple/
       its two callers, but misses `bootstrap` at hop 3 — the BFS frontier was
       still non-empty when traversal stopped. This is exactly what
       `agent/graph.ts`'s fallback loop (below) checks for and retries once.
-- [x] `vector-retrieval.ts`: top-k semantic search against Upstash Vector via
+- `vector-retrieval.ts`: top-k semantic search against Upstash Vector via
       `embedQuery` + `queryVectors`. Also defines `isLowConfidence` for the
       fallback loop. Threshold tuned twice, not guessed once: started at 0.45
       from sample-repo's related-vs-unrelated numbers, but testing a
@@ -778,7 +759,7 @@ ripple/
       weak-but-real semantic queries will also trip the fallback loop as a
       false positive, an acceptable tradeoff since trying the graph path
       costs only latency, not correctness.
-- [x] `compress.ts`: merges graph + vector results (deduped by id, graph
+- `compress.ts`: merges graph + vector results (deduped by id, graph
       results hydrated with real code text from Vector via `fetchChunks` --
       the persisted graph itself only stores symbol metadata, not source),
       keeps top-relevance chunks verbatim, summarizes the rest, and logs
@@ -818,7 +799,7 @@ ripple/
         completed successfully with a fully-grounded answer. Final
         measured result on the real repo: **5015 → 2423 tokens, 52%
         reduction** — the actual headline number, not a placeholder.
-- [x] `answer.ts`: final grounded answer via `openai/gpt-oss-120b`, with
+- `answer.ts`: final grounded answer via `openai/gpt-oss-120b`, with
       file/line citations. Citations are filtered to symbols the model
       actually cited inline (`[file.ts::name]` appearing in the answer
       text), not just everything that was available as context — a real
@@ -826,7 +807,7 @@ ripple/
       real repo: correctly traced `IsDefined` → `ValidateBy` and explained
       the blast radius of changing `ValidateBy` across every decorator
       built on it, grounded in real code snippets with correct citations.
-- [x] `agent/graph.ts`: a genuine `StateGraph` with conditional edges based on
+- `agent/graph.ts`: a genuine `StateGraph` with conditional edges based on
       `router.ts`'s output, not five functions called in a fixed sequence
       with LangGraph wrapped around it after the fact:
       - `router` fans out via `addConditionalEdges` returning an *array* of
@@ -838,9 +819,9 @@ ripple/
         because the fallback loop has to flip `fallbackAttempted` (and
         sometimes `hopDepth`) as part of the routing decision itself, not as
         a separate node.
-      - **The conditional loop** (instruction: "one real conditional loop,
-        not just branching") has two conditions, both evidenced by real test
-        runs, not just written and assumed to work:
+      - **The conditional loop** — the assignment specifically called for one
+        real conditional loop, not just branching — has two conditions, both
+        evidenced by real test runs, not just written and assumed to work:
         1. Single-path structural query, no anchor found in the graph at
            all (`graphResults.length === 0`) → falls back to
            `vectorRetrieval` on the raw query. Fired for real in testing: a
@@ -890,17 +871,17 @@ ripple/
         all five test cases including the exact real-repo query that broke
         both prior string-matching attempts — correct citations every time,
         with no pattern-matching left to break on a fourth format.
-- [x] `npm run test:agent` (`src/agent/test-agent.ts`): end-to-end coverage
+- `npm run test:agent` (`src/agent/test-agent.ts`): end-to-end coverage
       across structural/semantic/both, the empty-anchor fallback, the
       hop-depth-expansion loop, and one real-repo run — kept as a permanent
       test, same as the per-node tests, not thrown away once green.
 
 ### Phase 4 — API + UI
-- [x] `/api/ingest`: `POST { source }` (local dir, GitHub URL, or owner/repo
+- `/api/ingest`: `POST { source }` (local dir, GitHub URL, or owner/repo
       shorthand — same input `ingest()` already accepts) → runs the full
       Phase 1+2 pipeline, returns `{ repoKey, source, stats, persisted,
       embeddedCount, vectorsWritten, skippedCount }`.
-- [x] `/api/query`: `POST { repoKey, question }` → runs `agentGraph`, returns
+- `/api/query`: `POST { repoKey, question }` → runs `agentGraph`, returns
       `{ answer, citations, walkedNodes, tokenStats, taskType }` — matches
       the originally-planned shape (`repoId` renamed `repoKey` to match
       every other part of the system, which already settled on that name
@@ -924,11 +905,11 @@ ripple/
       for both, instead of two conventions for the same shared files.
       Re-ran the full existing test suite after the rewrite to confirm
       nothing broke.
-- [x] Chat UI (`src/components/ChatPanel.tsx`): repo input + ingestion
+- Chat UI (`src/components/ChatPanel.tsx`): repo input + ingestion
       status, chat interface, and a token-savings panel with deliberately
       outsized visual weight (large gradient card, 36px tabular-nums
-      number) — the single most demo-friendly number in the project, per
-      the original instruction. **Actually tested in a browser** (Chrome,
+      number) — the single most demo-friendly number in the project.
+      **Actually tested in a browser** (Chrome,
       via `claude-in-chrome`), not just trusted to compile: ingested
       `sample-repo` through the real UI (correct stats rendered: "3 files,
       7 symbols, 5/6 calls resolved"), asked two real questions
@@ -943,7 +924,7 @@ ripple/
       error message calls out, not a bug in this code.
 
 ### Phase 5 — graph visualization
-- [x] Render `walkedNodes` + their edges as a small subgraph (`@xyflow/react`,
+- Render `walkedNodes` + their edges as a small subgraph (`@xyflow/react`,
       the maintained successor to `react-flow`), highlighting the path the
       agent actually traversed for the current answer.
 
@@ -1123,7 +1104,7 @@ out to be two different things — not one repeat of the finding above.**
    same-day fix this close to the deadline.
 
 ### Phase 6 — deploy + submission polish
-- [x] Deployed to Vercel (Node.js runtime, not Edge, on both API routes —
+- Deployed to Vercel (Node.js runtime, not Edge, on both API routes —
       the WASM parser and local embedding model need real filesystem
       access). Explicit `maxDuration` set on both routes rather than
       relying on an unstated default: 300s on `/api/ingest`, 290s on
@@ -1151,13 +1132,13 @@ out to be two different things — not one repeat of the finding above.**
          same real ingest — over Vercel Hobby's fixed, non-configurable
          2GB ceiling. Reduced `embed.ts`'s `BATCH_SIZE` to 8, holding peak
          RSS to ~870MB with no meaningful change in wall-clock time.
-- [x] Renamed the project from "GraphRAG" to **Ripple** across the UI,
+- Renamed the project from "GraphRAG" to **Ripple** across the UI,
       metadata, `package.json`, and this README, and gave the UI a
       deliberate visual pass (teal/purple/coral accent system matching the
       relationships/semantic/compression concepts already established in
       the architecture diagram, distinctive header typography, an
       animated compression bar, more visual weight on the graph panel).
-- [x] Found and fixed two real bugs in the graph panel post-deploy, neither
+- Found and fixed two real bugs in the graph panel post-deploy, neither
       the same as Phase 5's original rendering-completion-delay finding —
       full root-cause writeup above, under Phase 5. In short: a genuine
       multi-node cycle in real code (`deepMerge → deepMergeInternal →
@@ -1171,7 +1152,7 @@ out to be two different things — not one repeat of the finding above.**
       library's async fit inference with a direct, self-computed
       `setViewport()` call — verified live on both the previously-broken
       cyclic case and the previously-coincidentally-working small case.
-- [x] Found and fixed a real production timeout under compound queries:
+- Found and fixed a real production timeout under compound queries:
       "what breaks *and* explain X" routes to `taskType: "both"`, firing
       more Groq calls per request than a single-mode query. A request hit
       Groq's per-minute rate limit twice in a row (60.5s wait each,
@@ -1182,7 +1163,7 @@ out to be two different things — not one repeat of the finding above.**
       before the token bucket refills), so the real fix was giving the
       route itself enough headroom: raised to 290s, just under Vercel
       Hobby's actual 300s ceiling.
-- [x] Test end-to-end against real repos, both via the CLI/direct pipeline
+- Tested end-to-end against real repos, both via the CLI/direct pipeline
       calls (see "Real-repo parsing gaps" and the five-repo table above)
       and, separately, through the actual deployed app: `sindresorhus/ky`
       re-ingested and re-queried on the live Vercel URL after every major
@@ -1191,11 +1172,11 @@ out to be two different things — not one repeat of the finding above.**
       5-node `mergeHeaders` blast radius — the fixes changed
       infrastructure and rendering, not the underlying pipeline's
       correctness.
-- [x] Write the submission doc — see `SUBMISSION.md` at the project root.
+- Wrote the submission doc — see `SUBMISSION.md` at the project root.
 
 ---
 
-## Explicit non-goals (don't drift into these under deadline pressure)
+## Explicit non-goals
 
 - No multi-language support beyond TS/JS.
 - No full type inference / language-server-level resolution — heuristic
@@ -1205,12 +1186,3 @@ out to be two different things — not one repeat of the finding above.**
 - No attempt to match TokenFold's actual internals — this is explicitly a
   smaller, transparent demonstration of the same underlying problem, not a
   reverse-engineering attempt.
-
-## Working agreement for this session
-
-- Keep `npm run test:parser` passing after every change to `src/parser/`.
-- When a resolution heuristic fails on a real repo, log it and note it in this
-  README's limitations rather than quietly special-casing it away.
-- Prefer shipping Phases 1-4 completely over polishing Phase 5-6 partially —
-  a working text answer with no graph visualization beats a beautiful
-  visualization with a broken agent underneath.
