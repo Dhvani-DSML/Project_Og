@@ -434,13 +434,16 @@ or 50%. A one-line "nothing here needed summarizing" vs. "12 of 112 nodes kept
 verbatim, the rest summarized" distinction would turn a number into something a user
 actually trusts and understands the mechanics of, rather than a bare stat.
 
-**Trusting a "walked path" claim requires a way to verify it that isn't just belief.**
-This tool's entire pitch rests on "the graph panel shows what was actually walked, not
-a plausible-looking guess" — but there's currently no way for a user to spot-check
-that claim beyond trusting the label. Even a lightweight affordance (click a node,
-jump to the cited line range) would close the gap between "the tool says it's
-grounded" and "I can see for myself that it is," which matters more for this category
-of tool than for a generic chatbot, since the whole point is auditability.
+**Trusting a "walked path" claim requires a way to verify it that isn't just belief
+— fixed.** This tool's entire pitch rests on "the graph panel shows what was actually
+walked, not a plausible-looking guess," which needed a way for a user to spot-check
+that claim beyond trusting the label. Graph nodes are now clickable: each one deep-links
+to `github.com/{owner}/{repo}/blob/{ref}/{file}#L{start}-L{end}`, landing on the exact
+cited lines on the real GitHub page. Owner/repo/ref are persisted alongside the graph
+at ingest time; local-directory ingestion (no browsable URL) degrades the click to a
+no-op rather than an error. Verified live, not just that it compiles: re-ingested `ky`,
+ran the `mergeHeaders` blast radius, clicked three real nodes, and confirmed each
+constructed URL landed on the correct file with the correct lines highlighted.
 
 ---
 
