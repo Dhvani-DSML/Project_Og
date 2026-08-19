@@ -368,9 +368,53 @@ falling through to substring matching. This is a small, well-understood, low-ris
 change — flagged here specifically because it's exactly the shape of gap worth fixing
 in a follow-up, not a same-day rush.
 
-**An "LLM Wiki" browsing mode.** [Placeholder for the extension idea discussed
-separately — needs to be filled in with the actual shape of that idea in my own words
-before this goes in the real submission.]
+**An "LLM Wiki" browsing mode.**
+
+> [DRAFT — REVIEW BEFORE SUBMITTING] Written in first person as raw notes, not
+> polished copy — needs a real pass before this goes out.
+
+This is Andrej Karpathy's "LLM Wiki" idea — instead of re-deriving an answer from
+scratch on every single query the way plain RAG (and honestly, the way Ripple itself)
+does, the LLM incrementally builds and maintains an actual persistent, structured
+knowledge base from the source material. Ingest, query, and — the part that makes it
+more than a cache — lint: go back and check whether what it wrote is still true.
+
+Why I think this fits *this* project specifically and isn't just a generic "add a
+wiki" idea bolted on: Ripple already has the hard part done. It has a real
+relationship graph, not just embeddings — that's the whole pitch of the project. What
+it doesn't have is anything that *aggregates* across that graph into a narrative. Ask
+it "how does auth flow through this app" and it'll walk whatever nodes the router
+decides are relevant to that one question, then throw the answer away. Ask basically
+the same question tomorrow and it does the exact same work again from zero. A wiki
+layer sitting on top of the graph could synthesize a "how does auth flow through this
+app" *page* once, and then just serve it — the graph traversal is the thing that makes
+that page trustworthy in the first place, other tools don't have that relationship
+data to build the page from honestly.
+
+The mechanism I keep coming back to for why this is actually buildable and not just a
+nice idea: every answer this project produces already carries `path:line` citations.
+A wiki page built the same way would carry the same citations. Which means the
+staleness check — the "lint" part — is almost free to add on top of the ingestion
+pipeline that already exists: when a repo gets re-ingested, diff each wiki page's
+cited line ranges against the new parse, and flag the page as stale if they moved.
+Right now there is *nothing* in this system that tells you "hey, this answer I gave
+you three ingests ago doesn't hold anymore" — that's a real, concrete gap, and I think
+it's the kind of gap that matters a lot once you imagine someone actually relying on
+this day to day instead of asking it one question and closing the tab.
+
+Honest note on why this isn't built: I didn't build it, on purpose. A new pipeline
+stage — persistent wiki storage, a synthesis step, a lint/staleness job — is a lot of
+new surface area to introduce this close to a deadline, and the risk of destabilizing
+a working, fully-tested submission for a feature that wouldn't even be fully tested
+itself felt like the wrong trade. What I'd actually do first, before the full wiki, is
+the much smaller version of the same underlying gap: parse and embed the repo's own
+README and `package.json` as retrievable chunks alongside the function/class chunks
+that already get embedded. That directly fixes something I found while testing this
+session — "what is this repo about" currently has to be answered entirely from
+function-level code chunks, with no author-written summary anywhere in the index, and
+it works better than I expected but it's clearly missing the obvious source of truth.
+That's a same-day-sized change and the natural first step toward the bigger wiki idea,
+not a separate thing.
 
 ### 3B — UI issues in this category of tool
 
